@@ -4,7 +4,12 @@ node_modules/
 # Secrets
 .env
 .env.*
+!.env.example
 
 # System/editor files
 .DS_Store
 .vscode/
+
+# Generated lead exports
+backend/data/exports/*.csv
+!backend/data/exports/.gitkeep
