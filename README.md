@@ -19,6 +19,7 @@ Build a Node.js/Express API that searches the Google Places API using user-defin
 The API should:
 
 - Accept search criteria such as business type/category, location, and maximum number of results.
+- Limit each search to 50 businesses for the initial release.
 - Query the Google Places API.
 - Normalize the API response into a consistent business object.
 - Collect relevant fields:
@@ -33,6 +34,8 @@ The API should:
 - Use `placeId` to identify duplicate businesses.
 - Maintain a temporary list of previously collected `placeId` values.
 - Export newly discovered businesses to a CSV file.
+- Track Places API requests for the current calendar month and return the remaining allowance to the signed-in user.
+- Refuse a search before it would exceed the application's monthly safety limit. When the limit is reached, explain that searches resume after the monthly reset or that the project owner must deliberately upgrade the plan.
 
 ### Example request
 
@@ -70,6 +73,39 @@ Export new leads → CSV
 Given a search such as **Auto repair businesses in Modesto, CA**, the API should return and export a clean list of new businesses while ignoring businesses that have already been collected.
 
 Nothing beyond lead discovery and CSV generation is part of Stage 1.
+
+## Google Places cost guardrails
+
+Google Places is request-based, not token-based. A search that returns up to 50
+businesses is normally one Text Search request, so 50 businesses per day is
+approximately 30 requests and 1,500 businesses in a 30-day month. Pagination
+or separate Place Details calls count as additional requests.
+
+The fields needed for this project—phone, website, rating, and review count—
+currently place a Text Search request in the Places API Text Search Enterprise
+SKU. Google currently lists a free usage cap of 1,000 Enterprise Text Search
+requests per month. This pricing can change, so the project owner must confirm
+the current cap before enabling production traffic.
+
+The application must use a lower, configurable monthly safety limit (initial
+default: 900 requests), leaving a 100-request buffer. Before any request leaves
+the server, the API must atomically reserve one request from this budget. The
+dashboard must show the configured allowance, requests used, requests
+remaining, and the next reset date. When the safety limit is reached, the
+server must not call Google Places and must show a clear "wait for reset or
+upgrade" message.
+
+Google Cloud budgets and alerts are useful warnings, but they do not reliably
+block future charges. Configure alerts at 50%, 80%, and 90% as a backup, use a
+dedicated Google Cloud project for this application, and restrict the API key
+to the Places API and the production server. Google Cloud quotas are a second
+backstop; the server-side monthly budget is the primary hard stop.
+
+References:
+
+- [Google Maps Platform pricing](https://developers.google.com/maps/billing-and-pricing/pricing)
+- [Places API usage limits and quotas](https://developers.google.com/maps/documentation/places/web-service/usage-and-billing)
+- [Google Cloud budgets](https://cloud.google.com/billing/docs/how-to/budgets)
 
 ## Repository layout
 
