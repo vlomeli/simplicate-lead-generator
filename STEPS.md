@@ -1,5 +1,11 @@
 # Simplicate Lead Generator — Stage 1 Build Guide
 
+> **Scope note:** This guide remains useful for the local API learning path.
+> The current product plan is [SPRINT_ONE.md](SPRINT_ONE.md), and
+> [ARCHITECTURE.md](ARCHITECTURE.md) is the source of truth for the private
+> dashboard, Supabase persistence, authentication, and cost safeguards. Where
+> this guide conflicts with those documents, follow the Sprint One plan.
+
 Use this document as the project checklist. Complete the steps in order. Do not skip ahead when a step says **stop** or **verify**.
 
 ## The non-negotiable cost rule

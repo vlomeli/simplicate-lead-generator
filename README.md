@@ -118,6 +118,9 @@ backend/
     services/     Google Places, deduplication, and CSV workflow
     utils/        Small reusable transformation helpers
   data/exports/   Generated CSV files (not committed)
+  test/           Offline automated tests
+ARCHITECTURE.md   Component boundaries, data ownership, and safety model
+SPRINT_ONE.md     Product scope and implementation guardrails
 ```
 
 ## Getting started
@@ -126,9 +129,21 @@ backend/
 cd backend
 npm install
 cp .env.example .env
+npm test
 npm run dev
 ```
 
 In Windows PowerShell, use `Copy-Item .env.example .env` instead of `cp`.
 
 The starter server runs on `http://localhost:5000`. Use `GET /api/health` to confirm it is running. The lead-search route is scaffolded at `POST /api/leads/search`; its Google Places and CSV implementation is the next Stage 1 task.
+
+## Development conventions
+
+- Copy environment settings from `backend/.env.example`; never commit
+  `backend/.env` or a real API key.
+- Keep HTTP handling in controllers, workflows in services, and deterministic
+  transformations in utilities.
+- Add or update offline tests for a behavior before connecting it to Google.
+- Run `npm test` from `backend/` before committing a backend change.
+- Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing a component boundary
+  or safety limit.
