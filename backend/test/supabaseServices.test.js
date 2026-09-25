@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { persistNewLeads } from '../src/services/leadRepository.js';
-import { reservePlacesUsage } from '../src/services/usageService.js';
+import { getPlacesUsage, reservePlacesUsage } from '../src/services/usageService.js';
 
 const lead = {
   placeId: 'place-1', name: 'Example Shop', address: null, phone: null,
@@ -43,4 +43,30 @@ test('a blocked atomic reservation is passed through without a provider call', a
   }, { googlePlacesDailyRequestLimit: 5, googlePlacesMonthlyRequestLimit: 900 });
   assert.equal(result.reserved, false);
   assert.equal(result.daily_remaining, 0);
+});
+
+test('fixture usage reports configured allowance and zero for missing counters', async () => {
+  const requestedTables = [];
+  const client = {
+    from(table) {
+      requestedTables.push(table);
+      return {
+        select() { return this; },
+        eq() { return this; },
+        maybeSingle: async () => ({ data: null, error: null }),
+      };
+    },
+  };
+
+  const usage = await getPlacesUsage(client, {
+    googlePlacesDailyRequestLimit: 5,
+    googlePlacesMonthlyRequestLimit: 900,
+  }, new Date('2026-09-25T12:00:00.000Z'));
+
+  assert.deepEqual(requestedTables, ['places_usage_daily', 'places_usage_monthly']);
+  assert.equal(usage.fixtureMode, true);
+  assert.deepEqual(usage.daily, { limit: 5, used: 0, remaining: 5 });
+  assert.deepEqual(usage.monthly, {
+    limit: 900, used: 0, remaining: 900, resetAt: '2026-10-01T00:00:00.000Z',
+  });
 });

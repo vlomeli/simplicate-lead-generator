@@ -1,6 +1,6 @@
 # Simplicate Lead Generator
 
-## Current checkpoint — offline backend core complete
+## Current checkpoint — fixture dashboard and Google-safety layer complete
 
 **Google Places is disabled.** The current search endpoint uses local fixture
 data only, so development work makes **zero Google Places API requests** and
@@ -16,15 +16,22 @@ validated search request → local fixtures → normalize → in-memory deduplic
 `POST /api/leads/search` accepts `query`, `location`, and `maxResults` (a whole
 number from 1 to 50), plus a valid Supabase Auth Bearer token. It returns only
 new fixture leads and writes a CSV to `backend/data/exports/`. Duplicate
-prevention is now permanent in Supabase.
+prevention is now permanent in Supabase. Each signed-in user is limited to the
+configured `GOOGLE_PLACES_REQUESTS_PER_MINUTE` search attempts (five by
+default), even in fixture mode. `GET /api/leads/usage` returns the configured
+daily/monthly allowance and current counters; fixture mode uses zero provider
+requests.
 
 ## Next approved implementation phase
 
-Apply the second Supabase migration, then build the private React dashboard.
-The backend now verifies Supabase tokens, persists lead/search/export records,
-and includes atomic daily/monthly usage reservations for a future live provider.
-This phase remains Google-free. The Google integration is not the next
-automatic step; it requires a separate explicit approval.
+Apply the second Supabase migration before using the authenticated fixture
+workflow. The private React dashboard supports sign-in, password recovery, and
+setting or changing a password while signed in. It displays a clear fixture-mode
+indicator plus daily/monthly provider allowance. The backend verifies Supabase
+tokens, persists lead/search/export records, and includes atomic daily/monthly
+usage reservations for a future live provider. This phase remains Google-free.
+The Google integration is not the next automatic step; it requires a separate
+explicit approval.
 
 ## Documentation map
 
