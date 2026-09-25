@@ -35,6 +35,8 @@ export function createConfig(environment = process.env) {
       defaultValue: 5000,
     }),
     googlePlacesApiKey: environment.GOOGLE_PLACES_API_KEY || '',
+    supabaseUrl: environment.SUPABASE_URL || '',
+    supabaseServiceRoleKey: environment.SUPABASE_SERVICE_ROLE_KEY || '',
     googlePlacesMonthlyRequestLimit: readPositiveInteger(
       environment.GOOGLE_PLACES_MONTHLY_REQUEST_LIMIT,
       {
@@ -73,6 +75,22 @@ export const config = createConfig();
 export function getGooglePlacesConfigurationError(activeConfig = config) {
   if (!activeConfig.googlePlacesApiKey) {
     return 'Google Places is not configured. Set GOOGLE_PLACES_API_KEY in backend/.env.';
+  }
+
+  return null;
+}
+
+/**
+ * Supabase is optional while running the starter health route, but required
+ * before the backend can access protected application data.
+ */
+export function getSupabaseConfigurationError(activeConfig = config) {
+  if (!activeConfig.supabaseUrl) {
+    return 'Supabase is not configured. Set SUPABASE_URL in backend/.env.';
+  }
+
+  if (!activeConfig.supabaseServiceRoleKey) {
+    return 'Supabase is not configured. Set SUPABASE_SERVICE_ROLE_KEY in backend/.env.';
   }
 
   return null;

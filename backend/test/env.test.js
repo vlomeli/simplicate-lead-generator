@@ -12,6 +12,8 @@ test('createConfig uses documented safe defaults', () => {
   assert.equal(config.googlePlacesRequestsPerMinute, 5);
   assert.equal(config.maxSearchResults, 50);
   assert.equal(config.googlePlacesApiKey, '');
+  assert.equal(config.supabaseUrl, '');
+  assert.equal(config.supabaseServiceRoleKey, '');
 });
 
 test('createConfig accepts valid environment overrides', () => {
@@ -19,6 +21,8 @@ test('createConfig accepts valid environment overrides', () => {
     NODE_ENV: 'test',
     PORT: '5050',
     GOOGLE_PLACES_API_KEY: 'test-key',
+    SUPABASE_URL: 'https://example.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'test-secret-key',
     GOOGLE_PLACES_MONTHLY_REQUEST_LIMIT: '800',
     GOOGLE_PLACES_DAILY_REQUEST_LIMIT: '4',
     GOOGLE_PLACES_REQUESTS_PER_MINUTE: '2',
@@ -28,6 +32,8 @@ test('createConfig accepts valid environment overrides', () => {
   assert.equal(config.environment, 'test');
   assert.equal(config.port, 5050);
   assert.equal(config.googlePlacesApiKey, 'test-key');
+  assert.equal(config.supabaseUrl, 'https://example.supabase.co');
+  assert.equal(config.supabaseServiceRoleKey, 'test-secret-key');
   assert.equal(config.googlePlacesMonthlyRequestLimit, 800);
   assert.equal(config.googlePlacesDailyRequestLimit, 4);
   assert.equal(config.googlePlacesRequestsPerMinute, 2);
