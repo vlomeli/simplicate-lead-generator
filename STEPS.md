@@ -1,5 +1,17 @@
 # Simplicate Lead Generator — Stage 1 Build Guide
 
+## Current checkpoint — Milestone 2 is complete offline
+
+Completed: request validation, fixture data, normalization, process-lifetime
+deduplication, CSV export, and offline automated tests. Google Places is still
+disabled and has not been called by this implementation.
+
+**Next:** Follow the current plan in `README.md`: add the Supabase-backed
+backend layer and atomic usage reservations before considering any live Google
+work. The older milestone ordering below is retained as implementation detail;
+`README.md`, `ARCHITECTURE.md`, and `SPRINT_ONE.md` take priority where they
+conflict.
+
 > **Scope note:** This guide remains useful for the local API learning path.
 > The current product plan is [SPRINT_ONE.md](SPRINT_ONE.md), and
 > [ARCHITECTURE.md](ARCHITECTURE.md) is the source of truth for the private

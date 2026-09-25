@@ -1,5 +1,6 @@
-// This module will contain the API-specific Google Places request code.
-// It should return raw provider data only; normalize that data in a utility.
+// Live Google access is deliberately disabled during the fixture-only phase.
+// This module must remain network-free until the owner explicitly approves the
+// cost-protected Google integration in the next phase.
 export async function searchGooglePlaces() {
-  throw new Error('Google Places integration has not been implemented yet.');
+  throw new Error('Live Google Places search is disabled during the offline fixture phase.');
 }

@@ -1,5 +1,13 @@
 # Sprint One — Private Lead Discovery and Review Workflow
 
+## Current checkpoint — do not enable Google yet
+
+The offline backend workflow is complete. It is deliberately fixture-only and
+does not contact Google. The next work is Supabase-backed authentication,
+persistence, and the server-side usage guardrails. Live Places access remains
+out of bounds until the owner explicitly approves it after those guardrails are
+verified.
+
 ## Outcome
 
 Create a private website where an authorized user can find a small batch of

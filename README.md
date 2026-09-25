@@ -1,12 +1,47 @@
 # Simplicate Lead Generator
 
+## Current checkpoint — offline backend core complete
+
+**Google Places is disabled.** The current search endpoint uses local fixture
+data only, so development work makes **zero Google Places API requests** and
+cannot create Google Places charges. Do not connect or call the Google service
+without the project owner’s explicit approval.
+
+The completed offline flow is:
+
+```text
+validated search request → local fixtures → normalize → in-memory deduplication → CSV export
+```
+
+`POST /api/leads/search` accepts `query`, `location`, and `maxResults` (a whole
+number from 1 to 50). It returns only new fixture leads and writes a CSV to
+`backend/data/exports/`. Duplicate prevention lasts until the backend restarts.
+
+## Next approved implementation phase
+
+Build the Supabase-backed backend layer: authenticated API access, permanent
+duplicate registry, lead/search/export persistence, and atomic daily/monthly
+usage reservations. This phase remains Google-free. The Google integration is
+not the next automatic step; it requires a separate explicit approval.
+
+## Documentation map
+
+| File | Use it for |
+| --- | --- |
+| This README | Project status, safety rule, and primary entry point. |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Component boundaries, data ownership, and non-negotiable safeguards. |
+| [SPRINT_ONE.md](SPRINT_ONE.md) | Product scope and definition of done. |
+| [STEPS.md](STEPS.md) | Ordered implementation checklist and handoff notes. |
+| [supabase/README.md](supabase/README.md) | Database schema purpose and safe migration instructions. |
+| [backend/src/README.md](backend/src/README.md) | Backend folder responsibilities. |
+
 ## Project summary
 
 This project is a business lead-generation tool designed to help automate the process of finding potential business clients for a review-management service.
 
 The goal is to reduce the manual work of researching businesses individually by using the Google Places API to discover relevant businesses, organize their information, and eventually use that data to create personalized outreach.
 
-**Current focus:** Build the foundation by reliably discovering and exporting qualified business leads.
+**Current focus:** Build authenticated persistence and usage protection without enabling live Google calls.
 
 ## Stage 1 — Google Places Lead Discovery
 

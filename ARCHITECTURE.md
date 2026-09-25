@@ -1,5 +1,12 @@
 # Architecture
 
+## Current checkpoint — fixture-only backend
+
+The HTTP endpoint, validation, normalization, in-memory duplicate handling,
+CSV generation, and offline tests are complete. The endpoint uses local fixture
+data. It does not call Google or Supabase. The next phase adds protected
+Supabase persistence and usage reservations; it must also remain Google-free.
+
 ## Purpose
 
 Simplicate Lead Generator is a private lead-discovery tool. It accepts a small
@@ -86,8 +93,14 @@ application limits are mandatory before live search is enabled.
 4. Develop with fixtures and tests first. A real Places request is a deliberate,
    separately tested integration step.
 
-## Current status
+## Status by component
 
-Only the Express API scaffold and configuration foundation exist. Supabase,
-authentication, live Google requests, data persistence, CSV export, and the
-dashboard are subsequent pieces of the plan.
+| Component | Status |
+| --- | --- |
+| Express API and input validation | Complete for offline development. |
+| Fixtures, normalization, in-memory deduplication, CSV export | Complete and tested. |
+| Supabase schema | Imported by the project owner; backend connection is pending. |
+| Supabase Auth | Configured for invited users by the project owner; frontend and API token verification are pending. |
+| Durable usage limits | Pending; do not enable Google until this is complete. |
+| Live Google Places integration | Intentionally disabled; requires explicit owner approval. |
+| React dashboard | Pending. |
