@@ -6,7 +6,7 @@ import test from 'node:test';
 
 import { validateSearchRequest } from '../src/controllers/leadController.js';
 import { exportLeadsToCsv } from '../src/services/csvExportService.js';
-import { findNewLeads, resetCollectedPlaceIdsForTest } from '../src/services/leadService.js';
+import { findNewLeads } from '../src/services/leadService.js';
 import { removeDuplicateLeads } from '../src/utils/deduplicateLeads.js';
 import { normalizeLead } from '../src/utils/leadNormalizer.js';
 
@@ -47,19 +47,24 @@ test('CSV export preserves commas and quotes and uses the documented headers', a
   }
 });
 
-test('offline workflow exports only newly collected fixture leads', async () => {
-  resetCollectedPlaceIdsForTest();
+test('offline workflow persists and exports only leads newly claimed by the registry', async () => {
   const exports = [];
-  const dependencies = {
+  let invocation = 0;
+  const options = {
+    userId: 'user-1',
+    client: {},
     exportCsv: async leads => {
       exports.push(leads);
       return { filename: 'test.csv', filePath: '/tmp/test.csv', leadCount: leads.length };
     },
+    persistNewLeads: async (_client, leads) => (++invocation === 1 ? leads.slice(0, 2) : []),
+    recordLeadExport: async () => {},
+    recordLeadSearch: async () => {},
   };
   const request = { query: 'auto repair', location: 'Modesto, CA', maxResults: 3 };
 
-  const first = await findNewLeads(request, dependencies);
-  const second = await findNewLeads(request, dependencies);
+  const first = await findNewLeads(request, options);
+  const second = await findNewLeads(request, options);
   assert.equal(first.source, 'fixture');
   assert.equal(first.leads.length, 2);
   assert.equal(second.leads.length, 0);

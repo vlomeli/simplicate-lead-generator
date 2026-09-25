@@ -99,8 +99,8 @@ application limits are mandatory before live search is enabled.
 | --- | --- |
 | Express API and input validation | Complete for offline development. |
 | Fixtures, normalization, in-memory deduplication, CSV export | Complete and tested. |
-| Supabase schema | Imported by the project owner; backend connection is pending. |
-| Supabase Auth | Configured for invited users by the project owner; frontend and API token verification are pending. |
-| Durable usage limits | Pending; do not enable Google until this is complete. |
+| Supabase schema | Initial schema imported; apply the usage-reservations migration before using the backend. |
+| Supabase Auth | API token verification is complete; frontend sign-in remains pending. |
+| Durable usage limits | Atomic reservation RPC is implemented; do not enable Google until it is integration-tested. |
 | Live Google Places integration | Intentionally disabled; requires explicit owner approval. |
 | React dashboard | Pending. |

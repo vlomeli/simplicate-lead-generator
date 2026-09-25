@@ -9,7 +9,7 @@ export async function searchLeads(request, response) {
   }
 
   try {
-    const result = await findNewLeads(request.body);
+    const result = await findNewLeads(request.body, { userId: request.user.id });
     response.status(200).json(result);
   } catch (error) {
     response.status(500).json({ error: 'Unable to complete the lead search.' });

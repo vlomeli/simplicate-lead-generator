@@ -14,15 +14,17 @@ validated search request → local fixtures → normalize → in-memory deduplic
 ```
 
 `POST /api/leads/search` accepts `query`, `location`, and `maxResults` (a whole
-number from 1 to 50). It returns only new fixture leads and writes a CSV to
-`backend/data/exports/`. Duplicate prevention lasts until the backend restarts.
+number from 1 to 50), plus a valid Supabase Auth Bearer token. It returns only
+new fixture leads and writes a CSV to `backend/data/exports/`. Duplicate
+prevention is now permanent in Supabase.
 
 ## Next approved implementation phase
 
-Build the Supabase-backed backend layer: authenticated API access, permanent
-duplicate registry, lead/search/export persistence, and atomic daily/monthly
-usage reservations. This phase remains Google-free. The Google integration is
-not the next automatic step; it requires a separate explicit approval.
+Apply the second Supabase migration, then build the private React dashboard.
+The backend now verifies Supabase tokens, persists lead/search/export records,
+and includes atomic daily/monthly usage reservations for a future live provider.
+This phase remains Google-free. The Google integration is not the next
+automatic step; it requires a separate explicit approval.
 
 ## Documentation map
 
@@ -167,6 +169,11 @@ cp .env.example .env
 npm test
 npm run dev
 ```
+
+Before using the protected lead endpoint, apply both migrations in
+`supabase/migrations/` in filename order and set `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` in `backend/.env`. The browser must send its
+Supabase access token as `Authorization: Bearer <token>`.
 
 In Windows PowerShell, use `Copy-Item .env.example .env` instead of `cp`.
 
