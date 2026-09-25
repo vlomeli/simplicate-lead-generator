@@ -175,6 +175,21 @@ Before using the protected lead endpoint, apply both migrations in
 `SUPABASE_SERVICE_ROLE_KEY` in `backend/.env`. The browser must send its
 Supabase access token as `Authorization: Bearer <token>`.
 
+### Dashboard
+
+```bash
+cd frontend
+npm install
+cp .env.example .env
+npm run dev
+```
+
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in
+`frontend/.env`. These values are safe for browser use; never put the Supabase
+service-role key or a Google API key in the frontend. The local dashboard runs
+at `http://localhost:5173` and connects to the backend at port `5000` by
+default.
+
 In Windows PowerShell, use `Copy-Item .env.example .env` instead of `cp`.
 
 The starter server runs on `http://localhost:5000`. Use `GET /api/health` to confirm it is running. The lead-search route is scaffolded at `POST /api/leads/search`; its Google Places and CSV implementation is the next Stage 1 task.
