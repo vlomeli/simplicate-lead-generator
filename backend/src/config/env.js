@@ -22,6 +22,13 @@ export function readPositiveInteger(value, { name, defaultValue }) {
   return parsedValue;
 }
 
+export function readBoolean(value, { name, defaultValue }) {
+  if (value === undefined || value === '') return defaultValue;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new Error(`${name} must be either true or false.`);
+}
+
 /**
  * Creates application configuration from an environment-like object.
  * Exported separately from `config` so the rules can be tested without
@@ -35,6 +42,10 @@ export function createConfig(environment = process.env) {
       defaultValue: 5000,
     }),
     googlePlacesApiKey: environment.GOOGLE_PLACES_API_KEY || '',
+    googlePlacesEnabled: readBoolean(environment.GOOGLE_PLACES_ENABLED, {
+      name: 'GOOGLE_PLACES_ENABLED',
+      defaultValue: false,
+    }),
     supabaseUrl: environment.SUPABASE_URL || '',
     supabaseServiceRoleKey: environment.SUPABASE_SERVICE_ROLE_KEY || '',
     googlePlacesMonthlyRequestLimit: readPositiveInteger(
@@ -73,6 +84,10 @@ export const config = createConfig();
  * making a live Places request so configuration errors remain safe and clear.
  */
 export function getGooglePlacesConfigurationError(activeConfig = config) {
+  if (!activeConfig.googlePlacesEnabled) {
+    return 'Google Places is disabled. Set GOOGLE_PLACES_ENABLED=true only after approving live usage.';
+  }
+
   if (!activeConfig.googlePlacesApiKey) {
     return 'Google Places is not configured. Set GOOGLE_PLACES_API_KEY in backend/.env.';
   }

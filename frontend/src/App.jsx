@@ -106,17 +106,18 @@ function Dashboard({ session, setNotice }) {
   const [usageError, setUsageError] = useState('');
   const [showPasswordForm, setShowPasswordForm] = useState(false);
 
+  const loadUsage = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/leads/usage`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to load usage.');
+      setUsage(data);
+    } catch (usageRequestError) { setUsageError(usageRequestError.message); }
+  };
+
   useEffect(() => {
-    const loadUsage = async () => {
-      try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/leads/usage`, {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Unable to load usage.');
-        setUsage(data);
-      } catch (usageRequestError) { setUsageError(usageRequestError.message); }
-    };
     loadUsage();
   }, [session.access_token]);
 
@@ -130,17 +131,22 @@ function Dashboard({ session, setNotice }) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'The search could not be completed.');
       setResult(data);
+      await loadUsage();
     } catch (requestError) { setError(requestError.message); }
     finally { setBusy(false); }
   };
 
-  return <section className="dashboard"><div className="page-heading"><div><p className="eyebrow">Lead workspace</p><h1>Discover a focused batch.</h1><p>Signed in as {session.user.email}</p></div><div className="heading-actions"><div className="mode-pill"><span /> Fixture mode</div><button className="text-button" onClick={() => setShowPasswordForm(!showPasswordForm)}>Set password</button></div></div>{showPasswordForm && <AccountPassword onComplete={() => { setShowPasswordForm(false); setNotice('Your password has been updated.'); }} />}<UsageCard usage={usage} error={usageError} /><form className="search-card card" onSubmit={search}><label>Business type<input value={form.query} onChange={event => setForm({ ...form, query: event.target.value })} required /></label><label>Location<input value={form.location} onChange={event => setForm({ ...form, location: event.target.value })} required /></label><label>Results<input type="number" min="1" max="50" value={form.maxResults} onChange={event => setForm({ ...form, maxResults: event.target.value })} required /></label><button className="primary" disabled={busy}>{busy ? 'Searching…' : 'Find leads'}</button></form>{error && <p className="form-error large-error">{error}</p>}{result && <LeadResults result={result} />}</section>;
+  const fixtureMode = usage?.fixtureMode ?? true;
+  const resultMaximum = fixtureMode ? 50 : 20;
+
+  return <section className="dashboard"><div className="page-heading"><div><p className="eyebrow">Lead workspace</p><h1>Discover a focused batch.</h1><p>Signed in as {session.user.email}</p></div><div className="heading-actions"><div className={`mode-pill ${fixtureMode ? '' : 'live'}`}><span /> {fixtureMode ? 'Fixture mode' : 'Live Google mode'}</div><button className="text-button" onClick={() => setShowPasswordForm(!showPasswordForm)}>Set password</button></div></div>{showPasswordForm && <AccountPassword onComplete={() => { setShowPasswordForm(false); setNotice('Your password has been updated.'); }} />}<UsageCard usage={usage} error={usageError} /><form className="search-card card" onSubmit={search}><label>Business type<input value={form.query} onChange={event => setForm({ ...form, query: event.target.value })} required /></label><label>Location<input value={form.location} onChange={event => setForm({ ...form, location: event.target.value })} required /></label><label>Results<input type="number" min="1" max={resultMaximum} value={form.maxResults} onChange={event => setForm({ ...form, maxResults: event.target.value })} required /></label><button className="primary" disabled={busy}>{busy ? 'Searching…' : 'Find leads'}</button></form>{error && <p className="form-error large-error">{error}</p>}{result && <LeadResults result={result} />}</section>;
 }
 
 function UsageCard({ usage, error }) {
   if (error) return <p className="form-error large-error">Usage: {error}</p>;
   if (!usage) return <div className="usage-card card"><p className="eyebrow">Usage protection</p><p>Loading usage…</p></div>;
-  return <section className="usage-card card"><div><p className="eyebrow">Usage protection</p><h2>Google is disabled</h2><p>Fixture searches do not consume provider allowance.</p></div><div className="usage-stats"><UsageStat label="Today" value={usage.daily.used} limit={usage.daily.limit} /><UsageStat label="This month" value={usage.monthly.used} limit={usage.monthly.limit} /></div></section>;
+  const fixtureMode = usage.fixtureMode;
+  return <section className="usage-card card"><div><p className="eyebrow">Usage protection</p><h2>{fixtureMode ? 'Google is disabled' : 'Live Google Places is active'}</h2><p>{fixtureMode ? 'Fixture searches do not consume provider allowance.' : 'Each live search reserves one request before Google is contacted.'}</p></div><div className="usage-stats"><UsageStat label="Today" value={usage.daily.used} limit={usage.daily.limit} /><UsageStat label="This month" value={usage.monthly.used} limit={usage.monthly.limit} /></div></section>;
 }
 
 function UsageStat({ label, value, limit }) { return <div className="usage-stat"><span>{label}</span><strong>{value} <small>/ {limit}</small></strong><em>{limit - value} remaining</em></div>; }

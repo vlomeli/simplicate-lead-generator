@@ -31,7 +31,7 @@ export async function getPlacesUsage(client, activeConfig = config, now = new Da
   const nextMonthReset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString();
 
   return {
-    fixtureMode: true,
+    fixtureMode: !activeConfig.googlePlacesEnabled,
     daily: { limit: activeConfig.googlePlacesDailyRequestLimit, used: dailyUsed, remaining: Math.max(0, activeConfig.googlePlacesDailyRequestLimit - dailyUsed) },
     monthly: { limit: activeConfig.googlePlacesMonthlyRequestLimit, used: monthlyUsed, remaining: Math.max(0, activeConfig.googlePlacesMonthlyRequestLimit - monthlyUsed), resetAt: nextMonthReset },
   };

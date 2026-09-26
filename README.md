@@ -7,6 +7,11 @@ data only, so development work makes **zero Google Places API requests** and
 cannot create Google Places charges. Do not connect or call the Google service
 without the project owner’s explicit approval.
 
+Live Google support is implemented behind `GOOGLE_PLACES_ENABLED=false`. Keep
+that setting false for all fixture work. A live search is limited to 20 results
+and atomically reserves one daily/monthly provider request before the backend
+makes its single Google request.
+
 The completed offline flow is:
 
 ```text

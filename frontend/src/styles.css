@@ -26,6 +26,7 @@ button, input { font: inherit; } button { cursor: pointer; } button:disabled { c
 .password-form.compact input { margin-bottom: 0; }
 .password-form.compact .primary { height: 43px; }
 .password-form.compact .form-error { grid-column: 1 / -1; margin: 0; }
+.mode-pill.live span { background: #d99232; }
 
 @media (max-width: 760px) {
   .heading-actions { margin-top: 12px; }
