@@ -8,9 +8,17 @@ cannot create Google Places charges. Do not connect or call the Google service
 without the project owner’s explicit approval.
 
 Live Google support is implemented behind `GOOGLE_PLACES_ENABLED=false`. Keep
-that setting false for all fixture work. A live search is limited to 20 results
-and atomically reserves one daily/monthly provider request before the backend
-makes its single Google request.
+that setting false for all fixture work. A direct live search is limited to 20
+results. An outreach list can page through up to 50 businesses, atomically
+reserving one daily/monthly provider request before each Google request.
+
+Outreach lists are also disabled from external website access by default.
+`WEBSITE_EMAIL_DISCOVERY_ENABLED=false` keeps development fixture-only. An
+outreach list can request up to 50 businesses, retain temporary results for
+seven days, and provide both a script-ready email-only CSV and a full-status
+CSV. The dashboard shows recent unexpired lists so a user can reopen one and
+download its exports again. Permanent storage remains limited to the Place ID
+registry used for duplicate prevention.
 
 The completed offline flow is:
 
@@ -29,14 +37,13 @@ requests.
 
 ## Next approved implementation phase
 
-Apply the second Supabase migration before using the authenticated fixture
-workflow. The private React dashboard supports sign-in, password recovery, and
-setting or changing a password while signed in. It displays a clear fixture-mode
-indicator plus daily/monthly provider allowance. The backend verifies Supabase
-tokens, persists lead/search/export records, and includes atomic daily/monthly
-usage reservations for a future live provider. This phase remains Google-free.
-The Google integration is not the next automatic step; it requires a separate
-explicit approval.
+Apply all three Supabase migrations before using the authenticated outreach
+workflow. The dashboard supports sign-in, password recovery, setting or
+changing a password, and building a temporary outreach list. It displays a
+clear fixture-mode indicator plus daily/monthly provider allowance. New list
+details expire after seven days; only the Place ID registry is permanent for
+duplicate prevention. Google and public-website email discovery remain disabled
+by default and each requires explicit configuration.
 
 ## Documentation map
 

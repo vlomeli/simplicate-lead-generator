@@ -98,13 +98,14 @@ function AuthCard({ setNotice }) {
 }
 
 function Dashboard({ session, setNotice }) {
-  const [form, setForm] = useState({ query: 'auto repair', location: 'Modesto, CA', maxResults: 10 });
-  const [result, setResult] = useState(null);
+  const [form, setForm] = useState({ query: 'auto repair', location: 'Modesto, CA', targetCount: 50 });
+  const [job, setJob] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [usage, setUsage] = useState(null);
   const [usageError, setUsageError] = useState('');
   const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [recentJobs, setRecentJobs] = useState([]);
 
   const loadUsage = async () => {
     try {
@@ -121,26 +122,89 @@ function Dashboard({ session, setNotice }) {
     loadUsage();
   }, [session.access_token]);
 
-  const search = async event => {
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+  const loadRecentJobs = async () => {
+    const response = await fetch(`${apiUrl}/api/outreach/jobs`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Unable to load recent outreach lists.');
+    setRecentJobs(data);
+  };
+
+  const loadJob = async jobId => {
+    const response = await fetch(`${apiUrl}/api/outreach/jobs/${jobId}`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Unable to load outreach-list progress.');
+    setJob(data);
+    if (data.status === 'completed') await Promise.all([loadUsage(), loadRecentJobs()]);
+  };
+
+  useEffect(() => {
+    loadRecentJobs().catch(recentJobsError => setError(recentJobsError.message));
+  }, [session.access_token]);
+
+  useEffect(() => {
+    if (!job?.id || ['completed', 'failed', 'stopped'].includes(job.status)) return undefined;
+    const interval = window.setInterval(() => loadJob(job.id).catch(jobError => setError(jobError.message)), 1_500);
+    return () => window.clearInterval(interval);
+  }, [job?.id, job?.status]);
+
+  const buildList = async event => {
     event.preventDefault(); setBusy(true); setError('');
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/leads/search`, {
+      const response = await fetch(`${apiUrl}/api/outreach/jobs`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ ...form, maxResults: Number(form.maxResults) }),
+        body: JSON.stringify({ ...form, targetCount: Number(form.targetCount) }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'The search could not be completed.');
-      setResult(data);
-      await loadUsage();
+      if (!response.ok) throw new Error(data.error || 'The outreach list could not be started.');
+      setJob(data);
+      await loadRecentJobs();
     } catch (requestError) { setError(requestError.message); }
     finally { setBusy(false); }
   };
 
-  const fixtureMode = usage?.fixtureMode ?? true;
-  const resultMaximum = fixtureMode ? 50 : 20;
+  const downloadCsv = async type => {
+    try {
+      const response = await fetch(`${apiUrl}/api/outreach/jobs/${job.id}/export?type=${type}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Unable to download the CSV.');
+      }
+      const blob = await response.blob();
+      const filename = response.headers.get('content-disposition')?.match(/filename="?([^";]+)"?/i)?.[1]
+        || `${type}-list.csv`;
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (downloadError) { setError(downloadError.message); }
+  };
 
-  return <section className="dashboard"><div className="page-heading"><div><p className="eyebrow">Lead workspace</p><h1>Discover a focused batch.</h1><p>Signed in as {session.user.email}</p></div><div className="heading-actions"><div className={`mode-pill ${fixtureMode ? '' : 'live'}`}><span /> {fixtureMode ? 'Fixture mode' : 'Live Google mode'}</div><button className="text-button" onClick={() => setShowPasswordForm(!showPasswordForm)}>Set password</button></div></div>{showPasswordForm && <AccountPassword onComplete={() => { setShowPasswordForm(false); setNotice('Your password has been updated.'); }} />}<UsageCard usage={usage} error={usageError} /><form className="search-card card" onSubmit={search}><label>Business type<input value={form.query} onChange={event => setForm({ ...form, query: event.target.value })} required /></label><label>Location<input value={form.location} onChange={event => setForm({ ...form, location: event.target.value })} required /></label><label>Results<input type="number" min="1" max={resultMaximum} value={form.maxResults} onChange={event => setForm({ ...form, maxResults: event.target.value })} required /></label><button className="primary" disabled={busy}>{busy ? 'Searching…' : 'Find leads'}</button></form>{error && <p className="form-error large-error">{error}</p>}{result && <LeadResults result={result} />}</section>;
+  const fixtureMode = usage?.fixtureMode ?? true;
+  return <section className="dashboard"><div className="page-heading"><div><p className="eyebrow">Lead workspace</p><h1>Build an outreach list.</h1><p>Signed in as {session.user.email}</p></div><div className="heading-actions"><div className={`mode-pill ${fixtureMode ? '' : 'live'}`}><span /> {fixtureMode ? 'Fixture mode' : 'Live Google mode'}</div><button className="text-button" onClick={() => setShowPasswordForm(!showPasswordForm)}>Set password</button></div></div>{showPasswordForm && <AccountPassword onComplete={() => { setShowPasswordForm(false); setNotice('Your password has been updated.'); }} />}<UsageCard usage={usage} error={usageError} /><form className="search-card card" onSubmit={buildList}><label>Business type<input value={form.query} onChange={event => setForm({ ...form, query: event.target.value })} required /></label><label>Location<input value={form.location} onChange={event => setForm({ ...form, location: event.target.value })} required /></label><label>Target businesses<input type="number" min="1" max="50" value={form.targetCount} onChange={event => setForm({ ...form, targetCount: event.target.value })} required /></label><button className="primary" disabled={busy || ['queued', 'running'].includes(job?.status)}>{busy ? 'Starting…' : 'Build list'}</button></form>{error && <p className="form-error large-error">{error}</p>}{job && <OutreachJob job={job} onDownload={downloadCsv} />}<RecentOutreachJobs jobs={recentJobs} onOpen={jobToOpen => loadJob(jobToOpen.id).catch(openError => setError(openError.message))} /></section>;
 }
+
+function RecentOutreachJobs({ jobs, onOpen }) {
+  if (!jobs.length) return null;
+  return <section className="recent-jobs"><p className="eyebrow">Recent lists</p><h2>Available for seven days</h2><div className="recent-job-list">{jobs.map(job => <button className="recent-job" key={job.id} onClick={() => onOpen(job)}><span><strong>{job.query}</strong><small>{job.location} · Created {formatListDate(job.createdAt)}</small></span><span><em>{job.emailsFound} email{job.emailsFound === 1 ? '' : 's'}</em><small>{job.status}</small></span></button>)}</div></section>;
+}
+
+function OutreachJob({ job, onDownload }) {
+  const isWorking = ['queued', 'running'].includes(job.status);
+  return <section className="outreach-job card"><div className="results-heading"><div><p className="eyebrow">{isWorking ? 'List in progress' : `List ${job.status}`}</p><h2>{job.emailsFound} public email{job.emailsFound === 1 ? '' : 's'} found</h2><p className="job-created">Created {formatListDate(job.createdAt)}</p></div>{job.status === 'completed' && <div className="export-actions"><button className="quiet-button" onClick={() => onDownload('outreach')}>Download outreach CSV</button><button className="quiet-button" onClick={() => onDownload('full')}>Download full results</button></div>}</div><div className="progress-stats"><ProgressStat label="Businesses found" value={job.businessesFound} target={job.targetCount} /><ProgressStat label="Websites checked" value={job.websitesChecked} /><ProgressStat label="Public emails" value={job.emailsFound} /></div>{isWorking && <p className="job-note">The list is being prepared. This page refreshes progress automatically.</p>}{job.status === 'completed' && <p className="job-note">Results expire after seven days. The outreach CSV contains only publicly listed emails; full results includes every checked business.</p>}{job.results.length > 0 && <div className="table-wrap"><table><thead><tr><th>Business</th><th>Email status</th><th>Reviews</th><th>Contact</th></tr></thead><tbody>{job.results.map(result => <tr key={result.placeId}><td><strong>{result.name}</strong><small>{result.address || 'No address listed'}</small></td><td><span className="tag">{result.emailStatus.replaceAll('_', ' ')}</span></td><td>{result.reviews ?? '—'}</td><td>{result.email || result.phone || '—'}</td></tr>)}</tbody></table></div>}</section>;
+}
+
+function ProgressStat({ label, value, target }) { return <div className="usage-stat"><span>{label}</span><strong>{value}{target ? <small> / {target}</small> : null}</strong></div>; }
+
+function formatListDate(value) { return value ? new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Unknown date'; }
 
 function UsageCard({ usage, error }) {
   if (error) return <p className="form-error large-error">Usage: {error}</p>;

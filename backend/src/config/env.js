@@ -46,6 +46,10 @@ export function createConfig(environment = process.env) {
       name: 'GOOGLE_PLACES_ENABLED',
       defaultValue: false,
     }),
+    websiteEmailDiscoveryEnabled: readBoolean(environment.WEBSITE_EMAIL_DISCOVERY_ENABLED, {
+      name: 'WEBSITE_EMAIL_DISCOVERY_ENABLED',
+      defaultValue: false,
+    }),
     supabaseUrl: environment.SUPABASE_URL || '',
     supabaseServiceRoleKey: environment.SUPABASE_SERVICE_ROLE_KEY || '',
     googlePlacesMonthlyRequestLimit: readPositiveInteger(
@@ -72,6 +76,10 @@ export function createConfig(environment = process.env) {
     maxSearchResults: readPositiveInteger(environment.MAX_SEARCH_RESULTS, {
       name: 'MAX_SEARCH_RESULTS',
       defaultValue: 50,
+    }),
+    outreachJobRetentionHours: readPositiveInteger(environment.OUTREACH_JOB_RETENTION_HOURS, {
+      name: 'OUTREACH_JOB_RETENTION_HOURS',
+      defaultValue: 168,
     }),
   };
 }

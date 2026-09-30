@@ -2,6 +2,7 @@ import cors from 'cors';
 import express from 'express';
 
 import leadRoutes from './routes/leadRoutes.js';
+import outreachRoutes from './routes/outreachRoutes.js';
 
 // The app owns HTTP configuration. Keeping it separate from server.js makes it
 // easy to test later without opening a network port.
@@ -16,6 +17,7 @@ app.get('/api/health', (_request, response) => {
 });
 
 app.use('/api/leads', leadRoutes);
+app.use('/api/outreach', outreachRoutes);
 
 app.use((_request, response) => {
   response.status(404).json({ error: 'Route not found.' });

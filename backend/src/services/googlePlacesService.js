@@ -19,8 +19,8 @@ export class GooglePlacesUsageLimitError extends Error {}
 export class GooglePlacesProviderError extends Error {}
 
 // Google Places Text Search is intentionally called only by the backend. One
-// usage reservation is made immediately before the one outbound request.
-export async function searchGooglePlaces(searchRequest, options = {}) {
+// usage reservation is made immediately before every outbound request.
+export async function searchGooglePlacesPage(searchRequest, options = {}) {
   const activeConfig = options.config ?? config;
   const configurationError = getGooglePlacesConfigurationError(activeConfig);
   if (configurationError) throw new GooglePlacesConfigurationError(configurationError);
@@ -42,10 +42,12 @@ export async function searchGooglePlaces(searchRequest, options = {}) {
         'X-Goog-Api-Key': activeConfig.googlePlacesApiKey,
         'X-Goog-FieldMask': fieldMask,
       },
-      body: JSON.stringify({
-        textQuery: `${searchRequest.query.trim()} in ${searchRequest.location.trim()}`,
-        maxResultCount: searchRequest.maxResults,
-      }),
+      body: JSON.stringify(searchRequest.pageToken
+        ? { pageToken: searchRequest.pageToken }
+        : {
+          textQuery: `${searchRequest.query.trim()} in ${searchRequest.location.trim()}`,
+          maxResultCount: Math.min(searchRequest.maxResults, maxGooglePlacesTextSearchResults),
+        }),
       signal: AbortSignal.timeout(10_000),
     });
   } catch (error) {
@@ -63,5 +65,33 @@ export async function searchGooglePlaces(searchRequest, options = {}) {
     throw new GooglePlacesProviderError(`Google Places returned HTTP ${response.status}.`);
   }
 
-  return Array.isArray(payload.places) ? payload.places : [];
+  return {
+    places: Array.isArray(payload.places) ? payload.places : [],
+    nextPageToken: typeof payload.nextPageToken === 'string' ? payload.nextPageToken : null,
+  };
+}
+
+// Keeps the original single-page provider interface for the existing search
+// route while outreach jobs can safely request additional pages up to 50.
+export async function searchGooglePlaces(searchRequest, options = {}) {
+  const page = await searchGooglePlacesPage(searchRequest, options);
+  return page.places;
+}
+
+export async function searchGooglePlacesBatch(searchRequest, options = {}) {
+  const targetCount = Math.min(searchRequest.maxResults, 50);
+  const places = [];
+  let pageToken = null;
+
+  do {
+    const page = await searchGooglePlacesPage({
+      ...searchRequest,
+      maxResults: Math.min(targetCount - places.length, maxGooglePlacesTextSearchResults),
+      pageToken,
+    }, options);
+    places.push(...page.places);
+    pageToken = page.nextPageToken;
+  } while (pageToken && places.length < targetCount);
+
+  return places.slice(0, targetCount);
 }
