@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { createFullResultsCsv, createOutreachCsv } from '../src/services/outreachCsvService.js';
 import { executeOutreachJob } from '../src/services/outreachJobService.js';
+import { GooglePlacesUsageLimitError } from '../src/services/googlePlacesService.js';
 
 test('outreach job stores only newly claimed businesses and their email outcomes', async () => {
   const updates = [];
@@ -29,10 +30,51 @@ test('outreach job stores only newly claimed businesses and their email outcomes
   assert.equal(updates.at(-1).emails_found, 1);
 });
 
+test('live outreach passes a business website URL to public-email discovery', async () => {
+  const websitesChecked = [];
+  const results = [];
+  await executeOutreachJob({
+    id: 'job-live-1', query: 'funeral home', location: 'San Jose, CA', target_count: 1, source: 'google_places',
+  }, {
+    client: {},
+    config: { websiteEmailDiscoveryEnabled: true },
+    updateJob: async () => {},
+    searchPlaces: async () => [
+      { id: 'place-live', displayName: { text: 'Family Funeral Home' }, websiteUri: 'https://business.test/' },
+    ],
+    claimPlaceId: async () => true,
+    discoverWebsiteEmail: async website => {
+      websitesChecked.push(website);
+      return { status: 'found', email: 'hello@business.test', sourceUrl: website };
+    },
+    addResult: async (_client, result) => { results.push(result); },
+  });
+
+  assert.deepEqual(websitesChecked, ['https://business.test/']);
+  assert.equal(results[0].recipient_email, 'hello@business.test');
+});
+
+test('records a daily-limit failure without adding a zero-result outreach list', async () => {
+  const updates = [];
+  const limitError = new GooglePlacesUsageLimitError('The configured Google Places allowance has been reached.');
+  limitError.limitType = 'daily';
+  await executeOutreachJob({
+    id: 'job-limit-1', query: 'auto repair', location: 'Los Angeles, CA', target_count: 1, source: 'google_places',
+  }, {
+    client: {},
+    updateJob: async (_client, _id, values) => { updates.push(values); },
+    searchPlaces: async () => { throw limitError; },
+  });
+
+  assert.equal(updates.at(-1).status, 'failed');
+  assert.equal(updates.at(-1).failure_code, 'google_places_daily_limit_reached');
+  assert.ok(updates.at(-1).completed_at);
+});
+
 test('outreach and full CSV exports have the intended retention-safe columns', () => {
   const results = [
     { recipient_email: 'hello@shop.example', business_name: 'Shop', address: null, phone: null, website: null, rating: 4.8, review_count: 185, category: 'car_repair', place_id: 'place-1', email_source_url: 'https://shop.example/contact', email_status: 'found' },
-    { recipient_email: null, business_name: 'No Email Shop', address: null, phone: null, website: null, rating: null, review_count: null, category: null, place_id: 'place-2', email_source_url: null, email_status: 'not_found' },
+    { recipient_email: null, business_name: 'No Email Shop', address: null, phone: null, website: null, rating: null, review_count: null, category: null, place_id: 'place-2', email_source_url: null, email_status: 'failed', failure_code: 'http_403' },
   ];
 
   const outreachCsv = createOutreachCsv(results);
@@ -41,5 +83,7 @@ test('outreach and full CSV exports have the intended retention-safe columns', (
   assert.match(outreachCsv, /hello@shop\.example/);
   assert.doesNotMatch(outreachCsv, /No Email Shop/);
   assert.match(fullCsv, /"email_status"/);
+  assert.match(fullCsv, /"email_failure_code"/);
+  assert.match(fullCsv, /http_403/);
   assert.match(fullCsv, /No Email Shop/);
 });

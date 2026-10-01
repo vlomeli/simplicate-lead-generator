@@ -75,6 +75,7 @@ function toJobResponse(job) {
     targetCount: job.target_count,
     source: job.source,
     status: job.status,
+    failureCode: job.failure_code,
     businessesFound: job.businesses_found,
     websitesChecked: job.websites_checked,
     emailsFound: job.emails_found,
@@ -93,6 +94,7 @@ function toJobResponse(job) {
       email: result.recipient_email,
       emailStatus: result.email_status,
       emailSourceUrl: result.email_source_url,
+      emailFailureCode: result.failure_code,
     })),
   };
 }

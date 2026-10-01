@@ -27,7 +27,9 @@ export async function searchGooglePlacesPage(searchRequest, options = {}) {
 
   const reservation = await (options.reserveUsage ?? reservePlacesUsage)(options.client, activeConfig);
   if (!reservation.reserved) {
-    throw new GooglePlacesUsageLimitError('The configured Google Places allowance has been reached.');
+    const error = new GooglePlacesUsageLimitError('The configured Google Places allowance has been reached.');
+    error.limitType = reservation.daily_remaining === 0 ? 'daily' : 'monthly';
+    throw error;
   }
 
   const fetchRequest = options.fetch ?? globalThis.fetch;

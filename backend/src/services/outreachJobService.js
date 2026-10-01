@@ -1,7 +1,7 @@
 import { config } from '../config/env.js';
 import { searchFixturePlaces } from './fixturePlacesService.js';
 import { discoverFixturePublicEmail } from './fixtureEmailDiscoveryService.js';
-import { searchGooglePlacesBatch } from './googlePlacesService.js';
+import { GooglePlacesUsageLimitError, searchGooglePlacesBatch } from './googlePlacesService.js';
 import {
   addOutreachResult,
   claimPlaceId,
@@ -47,7 +47,7 @@ export async function executeOutreachJob(job, options = {}) {
   const searchPlaces = options.searchPlaces ?? (job.source === 'google_places'
     ? request => searchGooglePlacesBatch(request, { client, config: activeConfig })
     : searchFixturePlaces);
-  const checkEmail = options.checkEmail ?? createEmailChecker(job.source, activeConfig);
+  const checkEmail = options.checkEmail ?? createEmailChecker(job.source, activeConfig, options);
 
   try {
     await updateJob(client, job.id, { status: 'running' });
@@ -78,21 +78,31 @@ export async function executeOutreachJob(job, options = {}) {
       emails_found: emailsFound,
       completed_at: new Date().toISOString(),
     });
-  } catch {
+  } catch (error) {
     await updateJob(client, job.id, {
       status: 'failed',
-      failure_code: 'outreach_job_failed',
+      failure_code: getOutreachFailureCode(error),
       completed_at: new Date().toISOString(),
     });
   }
 }
 
-function createEmailChecker(source, activeConfig) {
+function getOutreachFailureCode(error) {
+  if (error instanceof GooglePlacesUsageLimitError) {
+    return error.limitType === 'monthly'
+      ? 'google_places_monthly_limit_reached'
+      : 'google_places_daily_limit_reached';
+  }
+  return 'outreach_job_failed';
+}
+
+function createEmailChecker(source, activeConfig, options) {
   if (source === 'fixture') return discoverFixturePublicEmail;
   if (!activeConfig.websiteEmailDiscoveryEnabled) {
     return async lead => lead.website ? { status: 'skipped' } : { status: 'no_website' };
   }
-  return discoverPublicBusinessEmail;
+  const discoverWebsiteEmail = options.discoverWebsiteEmail ?? discoverPublicBusinessEmail;
+  return lead => discoverWebsiteEmail(lead.website);
 }
 
 function toResultRow(jobId, lead, emailResult) {
@@ -110,6 +120,6 @@ function toResultRow(jobId, lead, emailResult) {
     email_source_url: emailResult.sourceUrl ?? null,
     email_status: emailResult.status,
     email_checked_at: emailResult.status === 'skipped' ? null : new Date().toISOString(),
-    failure_code: emailResult.status === 'failed' ? 'website_check_failed' : null,
+    failure_code: emailResult.failureCode ?? null,
   };
 }

@@ -194,12 +194,37 @@ function Dashboard({ session, setNotice }) {
 
 function RecentOutreachJobs({ jobs, onOpen }) {
   if (!jobs.length) return null;
-  return <section className="recent-jobs"><p className="eyebrow">Recent lists</p><h2>Available for seven days</h2><div className="recent-job-list">{jobs.map(job => <button className="recent-job" key={job.id} onClick={() => onOpen(job)}><span><strong>{job.query}</strong><small>{job.location} · Created {formatListDate(job.createdAt)}</small></span><span><em>{job.emailsFound} email{job.emailsFound === 1 ? '' : 's'}</em><small>{job.status}</small></span></button>)}</div></section>;
+  return <section className="recent-jobs"><p className="eyebrow">Recent lists</p><h2>Available for seven days</h2><div className="recent-job-list">{jobs.map(job => {
+    const limitReached = job.failureCode === 'google_places_daily_limit_reached' || job.failureCode === 'google_places_monthly_limit_reached';
+    return <button className="recent-job" key={job.id} onClick={() => onOpen(job)}><span><strong>{job.query}</strong><small>{job.location} · Created {formatListDate(job.createdAt)}</small></span><span><em>{limitReached ? 'Provider limit reached' : `${job.emailsFound} email${job.emailsFound === 1 ? '' : 's'}`}</em><small>{limitReached ? 'no request made' : job.status}</small></span></button>;
+  })}</div></section>;
 }
 
 function OutreachJob({ job, onDownload }) {
   const isWorking = ['queued', 'running'].includes(job.status);
-  return <section className="outreach-job card"><div className="results-heading"><div><p className="eyebrow">{isWorking ? 'List in progress' : `List ${job.status}`}</p><h2>{job.emailsFound} public email{job.emailsFound === 1 ? '' : 's'} found</h2><p className="job-created">Created {formatListDate(job.createdAt)}</p></div>{job.status === 'completed' && <div className="export-actions"><button className="quiet-button" onClick={() => onDownload('outreach')}>Download outreach CSV</button><button className="quiet-button" onClick={() => onDownload('full')}>Download full results</button></div>}</div><div className="progress-stats"><ProgressStat label="Businesses found" value={job.businessesFound} target={job.targetCount} /><ProgressStat label="Websites checked" value={job.websitesChecked} /><ProgressStat label="Public emails" value={job.emailsFound} /></div>{isWorking && <p className="job-note">The list is being prepared. This page refreshes progress automatically.</p>}{job.status === 'completed' && <p className="job-note">Results expire after seven days. The outreach CSV contains only publicly listed emails; full results includes every checked business.</p>}{job.results.length > 0 && <div className="table-wrap"><table><thead><tr><th>Business</th><th>Email status</th><th>Reviews</th><th>Contact</th></tr></thead><tbody>{job.results.map(result => <tr key={result.placeId}><td><strong>{result.name}</strong><small>{result.address || 'No address listed'}</small></td><td><span className="tag">{result.emailStatus.replaceAll('_', ' ')}</span></td><td>{result.reviews ?? '—'}</td><td>{result.email || result.phone || '—'}</td></tr>)}</tbody></table></div>}</section>;
+  const dailyLimitReached = job.failureCode === 'google_places_daily_limit_reached';
+  const monthlyLimitReached = job.failureCode === 'google_places_monthly_limit_reached';
+  const limitMessage = dailyLimitReached
+    ? 'Daily Google Places limit reached. Try again tomorrow.'
+    : monthlyLimitReached
+      ? 'Monthly Google Places limit reached. Try again next month.'
+      : null;
+
+  return <section className="outreach-job card">
+    <div className="results-heading">
+      <div>
+        <p className="eyebrow">{isWorking ? 'List in progress' : `List ${job.status}`}</p>
+        <h2>{limitMessage || `${job.emailsFound} public email${job.emailsFound === 1 ? '' : 's'} found`}</h2>
+        <p className="job-created">Created {formatListDate(job.createdAt)}</p>
+      </div>
+      {job.status === 'completed' && <div className="export-actions"><button className="quiet-button" onClick={() => onDownload('outreach')}>Download outreach CSV</button><button className="quiet-button" onClick={() => onDownload('full')}>Download full results</button></div>}
+    </div>
+    {!limitMessage && <div className="progress-stats"><ProgressStat label="Businesses found" value={job.businessesFound} target={job.targetCount} /><ProgressStat label="Websites checked" value={job.websitesChecked} /><ProgressStat label="Public emails" value={job.emailsFound} /></div>}
+    {isWorking && <p className="job-note">The list is being prepared. This page refreshes progress automatically.</p>}
+    {limitMessage && <p className="form-error large-error">No Google request was made.</p>}
+    {job.status === 'completed' && <p className="job-note">Results expire after seven days. The outreach CSV contains only publicly listed emails; full results includes every checked business.</p>}
+    {job.results.length > 0 && <div className="table-wrap"><table><thead><tr><th>Business</th><th>Email status</th><th>Reviews</th><th>Contact</th></tr></thead><tbody>{job.results.map(result => <tr key={result.placeId}><td><strong>{result.name}</strong><small>{result.address || 'No address listed'}</small></td><td><span className="tag">{result.emailStatus.replaceAll('_', ' ')}</span></td><td>{result.reviews ?? '—'}</td><td>{result.email || result.phone || '—'}</td></tr>)}</tbody></table></div>}
+  </section>;
 }
 
 function ProgressStat({ label, value, target }) { return <div className="usage-stat"><span>{label}</span><strong>{value}{target ? <small> / {target}</small> : null}</strong></div>; }
