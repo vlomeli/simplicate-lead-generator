@@ -87,19 +87,34 @@ async function readTextLimited(response) {
 }
 
 function findPublicEmail(html) {
-  const matches = html.match(emailPattern) ?? [];
+  const matches = normalizeEmailMarkup(html).match(emailPattern) ?? [];
   return matches.map(value => value.replace(/[),.;:]+$/, '')).find(value => !value.endsWith('@example.com')) ?? null;
 }
 
 function findContactLinks(html, pageUrl) {
   const links = [];
-  const hrefPattern = /href\s*=\s*["']([^"']+)["']/gi;
+  const anchorPattern = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let match;
-  while ((match = hrefPattern.exec(html))) {
+  while ((match = anchorPattern.exec(html))) {
     try {
       const url = new URL(match[1], pageUrl);
-      if (url.origin === new URL(pageUrl).origin && /contact|about|team|support/i.test(url.pathname)) links.push(url.toString());
+      const linkText = stripHtml(match[2]);
+      const looksHelpful = /contact|about|team|support|get\s+in\s+touch|email\s+us|reach\s+us/i.test(url.pathname)
+        || /contact|about|team|support|get\s+in\s+touch|email\s+us|reach\s+us/i.test(linkText);
+      if (url.origin === new URL(pageUrl).origin && looksHelpful) links.push(url.toString());
     } catch {}
   }
   return links;
+}
+
+function normalizeEmailMarkup(html) {
+  return html
+    .replace(/&#(?:x0*40|0*64);?/gi, '@')
+    .replace(/&commat;?/gi, '@')
+    .replace(/&#(?:x0*2e|0*46);?/gi, '.')
+    .replace(/&period;?/gi, '.');
+}
+
+function stripHtml(value) {
+  return normalizeEmailMarkup(value).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
