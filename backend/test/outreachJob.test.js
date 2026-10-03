@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createFullResultsCsv, createOutreachCsv } from '../src/services/outreachCsvService.js';
-import { executeOutreachJob } from '../src/services/outreachJobService.js';
+import { executeOutreachJob, websiteCheckConcurrency } from '../src/services/outreachJobService.js';
 import { GooglePlacesUsageLimitError } from '../src/services/googlePlacesService.js';
 
 test('outreach job stores only newly claimed businesses and their email outcomes', async () => {
@@ -81,6 +81,35 @@ test('fills a short primary search with opted-in nearby results', async () => {
   assert.equal(updates.at(-1).businesses_found, 3);
   assert.equal(updates.at(-1).primary_businesses_found, 1);
   assert.equal(updates.at(-1).nearby_businesses_found, 2);
+});
+
+test('checks no more than three business websites at a time', async () => {
+  let activeChecks = 0;
+  let highestActiveChecks = 0;
+  const places = Array.from({ length: 6 }, (_, index) => ({
+    id: `place-${index}`,
+    displayName: { text: `Shop ${index}` },
+    websiteUri: `https://shop-${index}.test/`,
+  }));
+
+  await executeOutreachJob({
+    id: 'job-concurrency-1', query: 'auto repair', location: 'New York, NY', target_count: 6, source: 'fixture',
+  }, {
+    client: {},
+    updateJob: async () => {},
+    searchPlaces: async () => places,
+    claimPlaceId: async () => true,
+    checkEmail: async () => {
+      activeChecks += 1;
+      highestActiveChecks = Math.max(highestActiveChecks, activeChecks);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      activeChecks -= 1;
+      return { status: 'not_found' };
+    },
+    addResult: async () => {},
+  });
+
+  assert.equal(highestActiveChecks, websiteCheckConcurrency);
 });
 
 test('records a daily-limit failure without adding a zero-result outreach list', async () => {

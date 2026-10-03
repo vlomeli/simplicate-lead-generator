@@ -10,6 +10,8 @@ export async function discoverPublicBusinessEmail(website, options = {}) {
   if (!website) return { status: 'no_website' };
   const fetchPage = options.fetchPage ?? fetchPublicHtml;
   const checked = new Set();
+  // Keep website discovery deliberately bounded to the Google-provided
+  // landing page plus two likely contact pages.
   const pending = [website];
   const candidates = [];
   let successfulPages = 0;
@@ -24,7 +26,11 @@ export async function discoverPublicBusinessEmail(website, options = {}) {
       const { html, finalUrl } = await fetchPage(url, options);
       successfulPages += 1;
       candidates.push(...findPublicEmailCandidates(html, finalUrl, website));
-      for (const link of findContactLinks(html, finalUrl)) {
+      const contactPages = [
+        ...findContactLinks(html, finalUrl),
+        ...getPreferredContactUrls(website),
+      ];
+      for (const link of contactPages) {
         if (!checked.has(link) && !pending.includes(link) && pending.length + checked.size < maxPagesPerWebsite) pending.push(link);
       }
     } catch (error) {
@@ -134,6 +140,15 @@ function findContactLinks(html, pageUrl) {
     } catch {}
   }
   return links;
+}
+
+function getPreferredContactUrls(website) {
+  try {
+    const site = new URL(website);
+    return ['/contact/', '/contact-us/'].map(path => new URL(path, site.origin).toString());
+  } catch {
+    return [];
+  }
 }
 
 function normalizeEmailMarkup(html) {

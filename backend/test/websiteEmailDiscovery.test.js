@@ -15,7 +15,10 @@ for (const [name, html, expectedEmail] of [
 ]) {
   test(`discovers a public email in ${name}`, async () => {
     const result = await discoverPublicBusinessEmail(websiteUrl, {
-      fetchPage: async (url) => ({ html, finalUrl: url }),
+      fetchPage: async (url) => {
+        if (url === websiteUrl) return { html, finalUrl: url };
+        throw new Error(`Unexpected URL: ${url}`);
+      },
     });
 
     assert.deepEqual(result, {
@@ -40,6 +43,28 @@ test('follows a same-site link identified by its visible contact label', async (
     status: 'found',
     email: 'wecare@franklindownsfuneralhome.test',
     sourceUrl: careersUrl,
+  });
+});
+
+test('checks the standard contact routes when the homepage does not expose their links', async () => {
+  const contactUrl = `${websiteUrl}/contact/`;
+  const contactUsUrl = `${websiteUrl}/contact-us/`;
+  const fetchedUrls = [];
+  const result = await discoverPublicBusinessEmail(websiteUrl, {
+    fetchPage: async (url) => {
+      fetchedUrls.push(url);
+      if (url === websiteUrl) return { html: websiteEmailFixtures.noEmail, finalUrl: url };
+      if (url === contactUrl) return { html: websiteEmailFixtures.contactPageWithMailtoEmail, finalUrl: url };
+      if (url === contactUsUrl) return { html: websiteEmailFixtures.contactUsPageWithVisibleEmail, finalUrl: url };
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  });
+
+  assert.deepEqual(fetchedUrls, [websiteUrl, contactUrl, contactUsUrl]);
+  assert.deepEqual(result, {
+    status: 'found',
+    email: 'info@blueocean.test',
+    sourceUrl: contactUrl,
   });
 });
 

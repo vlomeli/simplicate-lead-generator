@@ -26,4 +26,6 @@ export const websiteEmailFixtures = {
   careersPage: '<section><b>wecare@franklindownsfuneralhome.test</b></section>',
   homepageWithTemplateAndContact: '<a href="mailto:contact@mysite.com">Contact</a><a href="/contact/">Contact us</a>',
   contactPageWithDomainEmail: '<span class="elementor-icon-list-text">info@mrbucketcc.com</span>',
+  contactPageWithMailtoEmail: '<footer><a href="mailto:info@blueocean.test">Email us</a></footer>',
+  contactUsPageWithVisibleEmail: '<main><span>info@brandingnycity.test</span></main>',
 };

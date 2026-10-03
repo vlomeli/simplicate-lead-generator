@@ -13,6 +13,7 @@ import { discoverPublicBusinessEmail } from './websiteEmailDiscoveryService.js';
 import { normalizeLead } from '../utils/leadNormalizer.js';
 
 export const maxOutreachBusinesses = 50;
+export const websiteCheckConcurrency = 3;
 
 export async function startOutreachJob(request, options = {}) {
   const activeConfig = options.config ?? config;
@@ -60,27 +61,45 @@ export async function executeOutreachJob(job, options = {}) {
     let nearbyBusinessesFound = 0;
 
     const processPlaces = async (places, source) => {
-      for (const lead of places.map(normalizeLead)) {
-        if (savedCount >= job.target_count) return;
-        const isNew = await claim(client, lead.placeId);
-        if (!isNew) continue;
+      const leads = places.map(normalizeLead).slice(0, Math.max(job.target_count - savedCount, 0));
+      let nextLeadIndex = 0;
+      let persistResult = Promise.resolve();
 
-        const emailResult = await checkEmail(lead);
-        if (lead.website && emailResult.status !== 'skipped') websitesChecked += 1;
-        if (emailResult.status === 'found') emailsFound += 1;
-        savedCount += 1;
-        if (source === 'primary') primaryBusinessesFound += 1;
-        else nearbyBusinessesFound += 1;
+      const saveOutcome = (lead, emailResult) => {
+        persistResult = persistResult.then(async () => {
+          if (lead.website && emailResult.status !== 'skipped') websitesChecked += 1;
+          if (emailResult.status === 'found') emailsFound += 1;
+          savedCount += 1;
+          if (source === 'primary') primaryBusinessesFound += 1;
+          else nearbyBusinessesFound += 1;
 
-        await addResult(client, toResultRow(job.id, lead, emailResult));
-        await updateJob(client, job.id, {
-          businesses_found: savedCount,
-          primary_businesses_found: primaryBusinessesFound,
-          nearby_businesses_found: nearbyBusinessesFound,
-          websites_checked: websitesChecked,
-          emails_found: emailsFound,
+          await addResult(client, toResultRow(job.id, lead, emailResult));
+          await updateJob(client, job.id, {
+            businesses_found: savedCount,
+            primary_businesses_found: primaryBusinessesFound,
+            nearby_businesses_found: nearbyBusinessesFound,
+            websites_checked: websitesChecked,
+            emails_found: emailsFound,
+          });
         });
-      }
+        return persistResult;
+      };
+
+      const worker = async () => {
+        while (nextLeadIndex < leads.length) {
+          const lead = leads[nextLeadIndex];
+          nextLeadIndex += 1;
+          const isNew = await claim(client, lead.placeId);
+          if (!isNew) continue;
+
+          const emailResult = await checkEmail(lead);
+          await saveOutcome(lead, emailResult);
+        }
+      };
+
+      const workerCount = Math.min(websiteCheckConcurrency, leads.length);
+      await Promise.all(Array.from({ length: workerCount }, worker));
+      await persistResult;
     };
 
     await processPlaces(primaryPlaces, 'primary');
