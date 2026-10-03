@@ -48,3 +48,18 @@ test('a blocked reservation prevents a mocked Google request', async () => {
   );
   assert.equal(fetched, false);
 });
+
+test('uses a nearby text query when a job opts into nearby expansion', async () => {
+  await searchGooglePlaces({
+    query: 'funeral homes', location: 'Tracy, CA', maxResults: 1, searchNearby: true,
+  }, {
+    client: {}, config: liveConfig,
+    reserveUsage: async () => ({ reserved: true }),
+    fetch: async (_url, options) => {
+      assert.deepEqual(JSON.parse(options.body), {
+        textQuery: 'funeral homes near Tracy, CA', maxResultCount: 1,
+      });
+      return { ok: true, json: async () => ({ places: [] }) };
+    },
+  });
+});

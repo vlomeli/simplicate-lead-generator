@@ -54,6 +54,35 @@ test('live outreach passes a business website URL to public-email discovery', as
   assert.equal(results[0].recipient_email, 'hello@business.test');
 });
 
+test('fills a short primary search with opted-in nearby results', async () => {
+  const requests = [];
+  const updates = [];
+  await executeOutreachJob({
+    id: 'job-nearby-1', query: 'funeral homes', location: 'Tracy, CA', target_count: 3, source: 'google_places', include_nearby: true,
+  }, {
+    client: {},
+    updateJob: async (_client, _id, values) => { updates.push(values); },
+    searchPlaces: async request => {
+      requests.push(request);
+      return request.searchNearby
+        ? [
+          { id: 'nearby-1', displayName: { text: 'Nearby One' } },
+          { id: 'nearby-2', displayName: { text: 'Nearby Two' } },
+        ]
+        : [{ id: 'primary-1', displayName: { text: 'Primary One' } }];
+    },
+    claimPlaceId: async () => true,
+    checkEmail: async () => ({ status: 'no_website' }),
+    addResult: async () => {},
+  });
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].searchNearby, true);
+  assert.equal(updates.at(-1).businesses_found, 3);
+  assert.equal(updates.at(-1).primary_businesses_found, 1);
+  assert.equal(updates.at(-1).nearby_businesses_found, 2);
+});
+
 test('records a daily-limit failure without adding a zero-result outreach list', async () => {
   const updates = [];
   const limitError = new GooglePlacesUsageLimitError('The configured Google Places allowance has been reached.');

@@ -27,6 +27,7 @@ export async function startOutreachJob(request, options = {}) {
     query: request.query.trim(),
     location: request.location.trim(),
     target_count: request.targetCount,
+    include_nearby: request.includeNearby === true,
     source,
     expires_at: expiresAt,
   });
@@ -51,29 +52,53 @@ export async function executeOutreachJob(job, options = {}) {
 
   try {
     await updateJob(client, job.id, { status: 'running' });
-    const rawPlaces = await searchPlaces({ query: job.query, location: job.location, maxResults: job.target_count });
-    const leads = rawPlaces.map(normalizeLead);
+    const primaryPlaces = await searchPlaces({ query: job.query, location: job.location, maxResults: job.target_count });
     let websitesChecked = 0;
     let emailsFound = 0;
     let savedCount = 0;
+    let primaryBusinessesFound = 0;
+    let nearbyBusinessesFound = 0;
 
-    await updateJob(client, job.id, { businesses_found: leads.length });
-    for (const lead of leads) {
-      const isNew = await claim(client, lead.placeId);
-      if (!isNew) continue;
+    const processPlaces = async (places, source) => {
+      for (const lead of places.map(normalizeLead)) {
+        if (savedCount >= job.target_count) return;
+        const isNew = await claim(client, lead.placeId);
+        if (!isNew) continue;
 
-      const emailResult = await checkEmail(lead);
-      if (lead.website && emailResult.status !== 'skipped') websitesChecked += 1;
-      if (emailResult.status === 'found') emailsFound += 1;
-      savedCount += 1;
+        const emailResult = await checkEmail(lead);
+        if (lead.website && emailResult.status !== 'skipped') websitesChecked += 1;
+        if (emailResult.status === 'found') emailsFound += 1;
+        savedCount += 1;
+        if (source === 'primary') primaryBusinessesFound += 1;
+        else nearbyBusinessesFound += 1;
 
-      await addResult(client, toResultRow(job.id, lead, emailResult));
-      await updateJob(client, job.id, { websites_checked: websitesChecked, emails_found: emailsFound });
+        await addResult(client, toResultRow(job.id, lead, emailResult));
+        await updateJob(client, job.id, {
+          businesses_found: savedCount,
+          primary_businesses_found: primaryBusinessesFound,
+          nearby_businesses_found: nearbyBusinessesFound,
+          websites_checked: websitesChecked,
+          emails_found: emailsFound,
+        });
+      }
+    };
+
+    await processPlaces(primaryPlaces, 'primary');
+    if (job.source === 'google_places' && job.include_nearby && savedCount < job.target_count) {
+      const nearbyPlaces = await searchPlaces({
+        query: job.query,
+        location: job.location,
+        maxResults: job.target_count - savedCount,
+        searchNearby: true,
+      });
+      await processPlaces(nearbyPlaces, 'nearby');
     }
 
     await updateJob(client, job.id, {
       status: 'completed',
       businesses_found: savedCount,
+      primary_businesses_found: primaryBusinessesFound,
+      nearby_businesses_found: nearbyBusinessesFound,
       websites_checked: websitesChecked,
       emails_found: emailsFound,
       completed_at: new Date().toISOString(),

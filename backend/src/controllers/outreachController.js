@@ -64,6 +64,7 @@ export function validateOutreachRequest(body) {
   if (!Number.isInteger(body?.targetCount) || body.targetCount < 1 || body.targetCount > maxOutreachBusinesses) {
     return `targetCount must be a whole number between 1 and ${maxOutreachBusinesses}.`;
   }
+  if (body.includeNearby !== undefined && typeof body.includeNearby !== 'boolean') return 'includeNearby must be true or false.';
   return null;
 }
 
@@ -73,12 +74,15 @@ function toJobResponse(job) {
     query: job.query,
     location: job.location,
     targetCount: job.target_count,
+    includeNearby: job.include_nearby,
     source: job.source,
     status: job.status,
     failureCode: job.failure_code,
     businessesFound: job.businesses_found,
     websitesChecked: job.websites_checked,
     emailsFound: job.emails_found,
+    primaryBusinessesFound: job.primary_businesses_found,
+    nearbyBusinessesFound: job.nearby_businesses_found,
     createdAt: job.created_at,
     completedAt: job.completed_at,
     expiresAt: job.expires_at,

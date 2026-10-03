@@ -98,7 +98,7 @@ function AuthCard({ setNotice }) {
 }
 
 function Dashboard({ session, setNotice }) {
-  const [form, setForm] = useState({ query: 'auto repair', location: 'Modesto, CA', targetCount: 50 });
+  const [form, setForm] = useState({ query: 'auto repair', location: 'Modesto, CA', targetCount: 50, includeNearby: true });
   const [job, setJob] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -189,7 +189,7 @@ function Dashboard({ session, setNotice }) {
   };
 
   const fixtureMode = usage?.fixtureMode ?? true;
-  return <section className="dashboard"><div className="page-heading"><div><p className="eyebrow">Lead workspace</p><h1>Build an outreach list.</h1><p>Signed in as {session.user.email}</p></div><div className="heading-actions"><div className={`mode-pill ${fixtureMode ? '' : 'live'}`}><span /> {fixtureMode ? 'Fixture mode' : 'Live Google mode'}</div><button className="text-button" onClick={() => setShowPasswordForm(!showPasswordForm)}>Set password</button></div></div>{showPasswordForm && <AccountPassword onComplete={() => { setShowPasswordForm(false); setNotice('Your password has been updated.'); }} />}<UsageCard usage={usage} error={usageError} /><form className="search-card card" onSubmit={buildList}><label>Business type<input value={form.query} onChange={event => setForm({ ...form, query: event.target.value })} required /></label><label>Location<input value={form.location} onChange={event => setForm({ ...form, location: event.target.value })} required /></label><label>Target businesses<input type="number" min="1" max="50" value={form.targetCount} onChange={event => setForm({ ...form, targetCount: event.target.value })} required /></label><button className="primary" disabled={busy || ['queued', 'running'].includes(job?.status)}>{busy ? 'Starting…' : 'Build list'}</button></form>{error && <p className="form-error large-error">{error}</p>}{job && <OutreachJob job={job} onDownload={downloadCsv} />}<RecentOutreachJobs jobs={recentJobs} onOpen={jobToOpen => loadJob(jobToOpen.id).catch(openError => setError(openError.message))} /></section>;
+  return <section className="dashboard"><div className="page-heading"><div><p className="eyebrow">Lead workspace</p><h1>Build an outreach list.</h1><p>Signed in as {session.user.email}</p></div><div className="heading-actions"><div className={`mode-pill ${fixtureMode ? '' : 'live'}`}><span /> {fixtureMode ? 'Fixture mode' : 'Live Google mode'}</div><button className="text-button" onClick={() => setShowPasswordForm(!showPasswordForm)}>Set password</button></div></div>{showPasswordForm && <AccountPassword onComplete={() => { setShowPasswordForm(false); setNotice('Your password has been updated.'); }} />}<UsageCard usage={usage} error={usageError} /><form className="search-card card" onSubmit={buildList}><label>Business type<input value={form.query} onChange={event => setForm({ ...form, query: event.target.value })} required /></label><label>Starting location<input value={form.location} onChange={event => setForm({ ...form, location: event.target.value })} required /></label><label>Target businesses<input type="number" min="1" max="50" value={form.targetCount} onChange={event => setForm({ ...form, targetCount: event.target.value })} required /></label><label className="nearby-option"><input type="checkbox" checked={form.includeNearby} onChange={event => setForm({ ...form, includeNearby: event.target.checked })} />Include nearby areas if needed</label><button className="primary" disabled={busy || ['queued', 'running'].includes(job?.status)}>{busy ? 'Starting…' : 'Build list'}</button></form>{error && <p className="form-error large-error">{error}</p>}{job && <OutreachJob job={job} onDownload={downloadCsv} />}<RecentOutreachJobs jobs={recentJobs} onOpen={jobToOpen => loadJob(jobToOpen.id).catch(openError => setError(openError.message))} /></section>;
 }
 
 function RecentOutreachJobs({ jobs, onOpen }) {
@@ -209,6 +209,9 @@ function OutreachJob({ job, onDownload }) {
     : monthlyLimitReached
       ? 'Monthly Google Places limit reached. Try again next month.'
       : null;
+  const nearbySummary = job.includeNearby && job.nearbyBusinessesFound > 0
+    ? `${job.primaryBusinessesFound} found in ${job.location}; ${job.nearbyBusinessesFound} added from nearby areas.`
+    : null;
 
   return <section className="outreach-job card">
     <div className="results-heading">
@@ -220,6 +223,7 @@ function OutreachJob({ job, onDownload }) {
       {job.status === 'completed' && <div className="export-actions"><button className="quiet-button" onClick={() => onDownload('outreach')}>Download outreach CSV</button><button className="quiet-button" onClick={() => onDownload('full')}>Download full results</button></div>}
     </div>
     {!limitMessage && <div className="progress-stats"><ProgressStat label="Businesses found" value={job.businessesFound} target={job.targetCount} /><ProgressStat label="Websites checked" value={job.websitesChecked} /><ProgressStat label="Public emails" value={job.emailsFound} /></div>}
+    {nearbySummary && <p className="job-note">{nearbySummary}</p>}
     {isWorking && <p className="job-note">The list is being prepared. This page refreshes progress automatically.</p>}
     {limitMessage && <p className="form-error large-error">No Google request was made.</p>}
     {job.status === 'completed' && <p className="job-note">Results expire after seven days. The outreach CSV contains only publicly listed emails; full results includes every checked business.</p>}

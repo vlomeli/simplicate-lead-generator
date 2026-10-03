@@ -37,7 +37,7 @@ requests.
 
 ## Next approved implementation phase
 
-Apply all three Supabase migrations before using the authenticated outreach
+Apply all four Supabase migrations before using the authenticated outreach
 workflow. The dashboard supports sign-in, password recovery, setting or
 changing a password, and building a temporary outreach list. It displays a
 clear fixture-mode indicator plus daily/monthly provider allowance. New list

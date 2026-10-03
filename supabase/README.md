@@ -10,7 +10,8 @@ without clicking through undocumented dashboard settings.
 2. Create a new query.
 3. Paste and run `migrations/202609230001_initial_private_leads.sql`, then
    `migrations/202609240001_usage_reservations.sql`, then
-   `migrations/202609300001_temporary_outreach_jobs.sql`, in that order.
+   `migrations/202609300001_temporary_outreach_jobs.sql`, then
+   `migrations/202610020001_outreach_nearby_counts.sql`, in that order.
 4. Confirm each query completes successfully. Do not paste any API keys or
    database passwords into the repository or chat.
 

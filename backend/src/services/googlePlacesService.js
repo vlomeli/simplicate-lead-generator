@@ -47,7 +47,7 @@ export async function searchGooglePlacesPage(searchRequest, options = {}) {
       body: JSON.stringify(searchRequest.pageToken
         ? { pageToken: searchRequest.pageToken }
         : {
-          textQuery: `${searchRequest.query.trim()} in ${searchRequest.location.trim()}`,
+          textQuery: `${searchRequest.query.trim()} ${searchRequest.searchNearby ? 'near' : 'in'} ${searchRequest.location.trim()}`,
           maxResultCount: Math.min(searchRequest.maxResults, maxGooglePlacesTextSearchResults),
         }),
       signal: AbortSignal.timeout(10_000),

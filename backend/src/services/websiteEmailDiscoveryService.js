@@ -11,6 +11,7 @@ export async function discoverPublicBusinessEmail(website, options = {}) {
   const fetchPage = options.fetchPage ?? fetchPublicHtml;
   const checked = new Set();
   const pending = [website];
+  const candidates = [];
   let successfulPages = 0;
   let failureCode = null;
 
@@ -22,8 +23,7 @@ export async function discoverPublicBusinessEmail(website, options = {}) {
     try {
       const { html, finalUrl } = await fetchPage(url, options);
       successfulPages += 1;
-      const email = findPublicEmail(html);
-      if (email) return { status: 'found', email, sourceUrl: finalUrl };
+      candidates.push(...findPublicEmailCandidates(html, finalUrl, website));
       for (const link of findContactLinks(html, finalUrl)) {
         if (!checked.has(link) && !pending.includes(link) && pending.length + checked.size < maxPagesPerWebsite) pending.push(link);
       }
@@ -34,6 +34,8 @@ export async function discoverPublicBusinessEmail(website, options = {}) {
     }
   }
 
+  const bestCandidate = selectBestCandidate(candidates);
+  if (bestCandidate) return { status: 'found', email: bestCandidate.email, sourceUrl: bestCandidate.sourceUrl };
   return successfulPages ? { status: 'not_found' } : { status: 'failed', failureCode: failureCode ?? 'fetch_failed' };
 }
 
@@ -69,7 +71,7 @@ export async function diagnosePublicWebsite(website, options = {}) {
       status: 'fetched',
       finalUrl,
       htmlBytes: Buffer.byteLength(html),
-      email: findPublicEmail(html),
+      email: selectBestCandidate(findPublicEmailCandidates(html, finalUrl, finalUrl))?.email ?? null,
     };
   } catch (error) {
     return { status: 'failed', failureCode: getFailureCode(error) };
@@ -108,11 +110,14 @@ async function readTextLimited(response) {
   return new TextDecoder().decode(Buffer.concat(chunks));
 }
 
-function findPublicEmail(html) {
+function findPublicEmailCandidates(html, sourceUrl, website) {
   const normalizedHtml = normalizeEmailMarkup(html);
   const mailtoEmails = findMailtoEmails(normalizedHtml);
-  const visiblePageEmails = findEmailMatches(removeNonVisibleMarkup(normalizedHtml));
-  return [...mailtoEmails, ...visiblePageEmails].find(isPublicBusinessEmail) ?? null;
+  const visiblePageEmails = findEmailMatches(extractVisibleText(normalizedHtml));
+  return [
+    ...mailtoEmails.map(email => createEmailCandidate(email, sourceUrl, website, 'mailto')),
+    ...visiblePageEmails.map(email => createEmailCandidate(email, sourceUrl, website, 'visible')),
+  ].filter(Boolean);
 }
 
 function findContactLinks(html, pageUrl) {
@@ -165,6 +170,10 @@ function removeNonVisibleMarkup(html) {
   return html.replace(/<(script|style|noscript)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ');
 }
 
+function extractVisibleText(html) {
+  return removeNonVisibleMarkup(html).replace(/<[^>]+>/g, ' ');
+}
+
 function isPublicBusinessEmail(email) {
   const normalized = email.toLowerCase();
   const domain = normalized.split('@')[1];
@@ -172,6 +181,41 @@ function isPublicBusinessEmail(email) {
     && !normalized.endsWith('@example.com')
     && domain !== 'wixpress.com'
     && !domain?.endsWith('.wixpress.com');
+}
+
+function createEmailCandidate(email, sourceUrl, website, sourceType) {
+  if (!isPublicBusinessEmail(email)) return null;
+  const score = (sourceType === 'mailto' ? 30 : 10)
+    + (isContactLikeUrl(sourceUrl) ? 30 : 0)
+    + (emailMatchesWebsiteDomain(email, website) ? 100 : 0);
+  return { email, sourceUrl, score };
+}
+
+function selectBestCandidate(candidates) {
+  const uniqueCandidates = new Map();
+  for (const candidate of candidates) {
+    const key = candidate.email.toLowerCase();
+    if (!uniqueCandidates.has(key) || uniqueCandidates.get(key).score < candidate.score) uniqueCandidates.set(key, candidate);
+  }
+  return [...uniqueCandidates.values()].sort((left, right) => right.score - left.score)[0] ?? null;
+}
+
+function isContactLikeUrl(value) {
+  try {
+    return /contact|about|team|support|get-in-touch|find-us/i.test(new URL(value).pathname);
+  } catch {
+    return false;
+  }
+}
+
+function emailMatchesWebsiteDomain(email, website) {
+  try {
+    const emailDomain = email.toLowerCase().split('@')[1];
+    const websiteHost = new URL(website).hostname.toLowerCase().replace(/^www\./, '');
+    return emailDomain === websiteHost || websiteHost.endsWith(`.${emailDomain}`);
+  } catch {
+    return false;
+  }
 }
 
 function getFailureCode(error) {

@@ -43,6 +43,24 @@ test('follows a same-site link identified by its visible contact label', async (
   });
 });
 
+test('continues past a rejected homepage placeholder and selects a contact-page domain match', async () => {
+  const businessUrl = 'https://mrbucketcc.com/';
+  const contactUrl = 'https://mrbucketcc.com/contact/';
+  const result = await discoverPublicBusinessEmail(businessUrl, {
+    fetchPage: async (url) => {
+      if (url === businessUrl) return { html: websiteEmailFixtures.homepageWithTemplateAndContact, finalUrl: url };
+      if (url === contactUrl) return { html: websiteEmailFixtures.contactPageWithDomainEmail, finalUrl: url };
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  });
+
+  assert.deepEqual(result, {
+    status: 'found',
+    email: 'info@mrbucketcc.com',
+    sourceUrl: contactUrl,
+  });
+});
+
 test('reports not_found when a reachable website has no public email', async () => {
   const result = await discoverPublicBusinessEmail(websiteUrl, {
     fetchPage: async (url) => ({ html: websiteEmailFixtures.noEmail, finalUrl: url }),
@@ -62,6 +80,14 @@ test('rejects Wix technical addresses as business contacts', async () => {
 test('rejects the confirmed placeholder email address', async () => {
   const result = await discoverPublicBusinessEmail(websiteUrl, {
     fetchPage: async (url) => ({ html: websiteEmailFixtures.placeholderEmail, finalUrl: url }),
+  });
+
+  assert.deepEqual(result, { status: 'not_found' });
+});
+
+test('ignores example addresses in form-field attributes', async () => {
+  const result = await discoverPublicBusinessEmail(websiteUrl, {
+    fetchPage: async (url) => ({ html: websiteEmailFixtures.formFieldPlaceholder, finalUrl: url }),
   });
 
   assert.deepEqual(result, { status: 'not_found' });
