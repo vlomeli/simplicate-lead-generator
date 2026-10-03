@@ -1,200 +1,40 @@
 # Simplicate Lead Generator
 
-## Current checkpoint — fixture dashboard and Google-safety layer complete
+Simplicate helps a signed-in user build an outreach list of businesses, find publicly displayed business emails when available, and download CSVs ready for review or an email workflow.
 
-**Google Places is disabled.** The current search endpoint uses local fixture
-data only, so development work makes **zero Google Places API requests** and
-cannot create Google Places charges. Do not connect or call the Google service
-without the project owner’s explicit approval.
+## What it does
 
-Live Google support is implemented behind `GOOGLE_PLACES_ENABLED=false`. Keep
-that setting false for all fixture work. A direct live search is limited to 20
-results. An outreach list can page through up to 50 businesses, atomically
-reserving one daily/monthly provider request before each Google request.
+1. Searches fixture data or Google Places for a business type and location.
+2. Skips Google Place IDs that have already been collected.
+3. Optionally checks each business website for a public email address.
+4. Creates a temporary list that can be reopened for seven days.
+5. Provides two downloads: an outreach-list CSV for businesses with a found email, and a full-list CSV with every email-check outcome.
 
-Outreach lists are also disabled from external website access by default.
-`WEBSITE_EMAIL_DISCOVERY_ENABLED=false` keeps development fixture-only. An
-outreach list can request up to 50 businesses, retain temporary results for
-seven days, and provide both a script-ready email-only CSV and a full-status
-CSV. The dashboard shows recent unexpired lists so a user can reopen one and
-download its exports again. Permanent storage remains limited to the Place ID
-registry used for duplicate prevention.
+Only the Google Place ID registry is permanent. Business details, email outcomes, and CSV-ready list data expire after seven days.
 
-The completed offline flow is:
+## Documentation
 
-```text
-validated search request → local fixtures → normalize → in-memory deduplication → CSV export
-```
-
-`POST /api/leads/search` accepts `query`, `location`, and `maxResults` (a whole
-number from 1 to 50), plus a valid Supabase Auth Bearer token. It returns only
-new fixture leads and writes a CSV to `backend/data/exports/`. Duplicate
-prevention is now permanent in Supabase. Each signed-in user is limited to the
-configured `GOOGLE_PLACES_REQUESTS_PER_MINUTE` search attempts (five by
-default), even in fixture mode. `GET /api/leads/usage` returns the configured
-daily/monthly allowance and current counters; fixture mode uses zero provider
-requests.
-
-## Next approved implementation phase
-
-Apply all four Supabase migrations before using the authenticated outreach
-workflow. The dashboard supports sign-in, password recovery, setting or
-changing a password, and building a temporary outreach list. It displays a
-clear fixture-mode indicator plus daily/monthly provider allowance. New list
-details expire after seven days; only the Place ID registry is permanent for
-duplicate prevention. Google and public-website email discovery remain disabled
-by default and each requires explicit configuration.
-
-## Documentation map
-
-| File | Use it for |
+| Guide | Use it for |
 | --- | --- |
-| This README | Project status, safety rule, and primary entry point. |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Component boundaries, data ownership, and non-negotiable safeguards. |
-| [SPRINT_ONE.md](SPRINT_ONE.md) | Product scope and definition of done. |
-| [STEPS.md](STEPS.md) | Ordered implementation checklist and handoff notes. |
-| [supabase/README.md](supabase/README.md) | Database schema purpose and safe migration instructions. |
-| [backend/src/README.md](backend/src/README.md) | Backend folder responsibilities. |
+| [Supabase setup](docs/supabase-setup.md) | Project creation, Auth URLs, environment values, and migrations. |
+| [Google Places setup](docs/google-places-setup.md) | Billing, backend API key, restrictions, alerts, and live-mode safeguards. |
+| [Architecture](docs/architecture.md) | Component boundaries, data retention, and request flow. |
+| [Database reference](supabase/README.md) | Active and legacy tables, retention, and SQL migration order. |
 
-## Project summary
+## Local setup
 
-This project is a business lead-generation tool designed to help automate the process of finding potential business clients for a review-management service.
+Apply the four SQL migrations in order before using authenticated list building. See [supabase/README.md](supabase/README.md).
 
-The goal is to reduce the manual work of researching businesses individually by using the Google Places API to discover relevant businesses, organize their information, and eventually use that data to create personalized outreach.
-
-**Current focus:** Build authenticated persistence and usage protection without enabling live Google calls.
-
-## Stage 1 — Google Places Lead Discovery
-
-### Goal
-
-Build a Node.js/Express API that searches the Google Places API using user-defined criteria and returns structured business data that can be used for lead generation.
-
-### Requirements
-
-The API should:
-
-- Accept search criteria such as business type/category, location, and maximum number of results.
-- Limit each search to 50 businesses for the initial release.
-- Query the Google Places API.
-- Normalize the API response into a consistent business object.
-- Collect relevant fields:
-  - `placeId`
-  - `name`
-  - `address`
-  - `phone`
-  - `website`
-  - `rating`
-  - `reviewCount`
-  - `category`
-- Use `placeId` to identify duplicate businesses.
-- Maintain a temporary list of previously collected `placeId` values.
-- Export newly discovered businesses to a CSV file.
-- Track Places API requests for the current calendar month and return the remaining allowance to the signed-in user.
-- Refuse a search before it would exceed the application's monthly safety limit. When the limit is reached, explain that searches resume after the monthly reset or that the project owner must deliberately upgrade the plan.
-
-### Example request
-
-```http
-POST /api/leads/search
-Content-Type: application/json
-```
-
-```json
-{
-  "query": "auto repair",
-  "location": "Modesto, CA",
-  "maxResults": 20
-}
-```
-
-### Expected flow
-
-```text
-Search criteria
-      ↓
-Google Places API
-      ↓
-Normalize results
-      ↓
-Check placeId
-      ↓
-Remove duplicates
-      ↓
-Export new leads → CSV
-```
-
-### Stage 1 success criteria
-
-Given a search such as **Auto repair businesses in Modesto, CA**, the API should return and export a clean list of new businesses while ignoring businesses that have already been collected.
-
-Nothing beyond lead discovery and CSV generation is part of Stage 1.
-
-## Google Places cost guardrails
-
-Google Places is request-based, not token-based. A search that returns up to 50
-businesses is normally one Text Search request, so 50 businesses per day is
-approximately 30 requests and 1,500 businesses in a 30-day month. Pagination
-or separate Place Details calls count as additional requests.
-
-The fields needed for this project—phone, website, rating, and review count—
-currently place a Text Search request in the Places API Text Search Enterprise
-SKU. Google currently lists a free usage cap of 1,000 Enterprise Text Search
-requests per month. This pricing can change, so the project owner must confirm
-the current cap before enabling production traffic.
-
-The application must use a lower, configurable monthly safety limit (initial
-default: 900 requests), leaving a 100-request buffer. Before any request leaves
-the server, the API must atomically reserve one request from this budget. The
-dashboard must show the configured allowance, requests used, requests
-remaining, and the next reset date. When the safety limit is reached, the
-server must not call Google Places and must show a clear "wait for reset or
-upgrade" message.
-
-Google Cloud budgets and alerts are useful warnings, but they do not reliably
-block future charges. Configure alerts at 50%, 80%, and 90% as a backup, use a
-dedicated Google Cloud project for this application, and restrict the API key
-to the Places API and the production server. Google Cloud quotas are a second
-backstop; the server-side monthly budget is the primary hard stop.
-
-References:
-
-- [Google Maps Platform pricing](https://developers.google.com/maps/billing-and-pricing/pricing)
-- [Places API usage limits and quotas](https://developers.google.com/maps/documentation/places/web-service/usage-and-billing)
-- [Google Cloud budgets](https://cloud.google.com/billing/docs/how-to/budgets)
-
-## Repository layout
-
-```text
-backend/
-  src/
-    config/       Environment configuration
-    controllers/  Request and response handling
-    routes/       API endpoint definitions
-    services/     Google Places, deduplication, and CSV workflow
-    utils/        Small reusable transformation helpers
-  data/exports/   Generated CSV files (not committed)
-  test/           Offline automated tests
-ARCHITECTURE.md   Component boundaries, data ownership, and safety model
-SPRINT_ONE.md     Product scope and implementation guardrails
-```
-
-## Getting started
+Start the backend:
 
 ```bash
 cd backend
 npm install
 cp .env.example .env
-npm test
 npm run dev
 ```
 
-Before using the protected lead endpoint, apply both migrations in
-`supabase/migrations/` in filename order and set `SUPABASE_URL` and
-`SUPABASE_SERVICE_ROLE_KEY` in `backend/.env`. The browser must send its
-Supabase access token as `Authorization: Bearer <token>`.
-
-### Dashboard
+Start the dashboard in another terminal:
 
 ```bash
 cd frontend
@@ -203,23 +43,94 @@ cp .env.example .env
 npm run dev
 ```
 
-Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in
-`frontend/.env`. These values are safe for browser use; never put the Supabase
-service-role key or a Google API key in the frontend. The local dashboard runs
-at `http://localhost:5173` and connects to the backend at port `5000` by
-default.
+Set the Supabase values in both `.env` files. `SUPABASE_SERVICE_ROLE_KEY` is backend-only. Never put it or a Google API key in `frontend/.env`. Restart the backend after changing a backend `.env` value.
 
-In Windows PowerShell, use `Copy-Item .env.example .env` instead of `cp`.
+## Fixture mode and live mode
 
-The starter server runs on `http://localhost:5000`. Use `GET /api/health` to confirm it is running. The lead-search route is scaffolded at `POST /api/leads/search`; its Google Places and CSV implementation is the next Stage 1 task.
+Both external integrations are off by default:
 
-## Development conventions
+```env
+GOOGLE_PLACES_ENABLED=false
+WEBSITE_EMAIL_DISCOVERY_ENABLED=false
+```
 
-- Copy environment settings from `backend/.env.example`; never commit
-  `backend/.env` or a real API key.
-- Keep HTTP handling in controllers, workflows in services, and deterministic
-  transformations in utilities.
-- Add or update offline tests for a behavior before connecting it to Google.
-- Run `npm test` from `backend/` before committing a backend change.
-- Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing a component boundary
-  or safety limit.
+With both values false, list building uses fixtures only. It makes no Google Places request and does not fetch business websites.
+
+Set `GOOGLE_PLACES_ENABLED=true` only when intentionally running a live Google test. Set `WEBSITE_EMAIL_DISCOVERY_ENABLED=true` only when intentionally allowing public website checks. These switches are independent: Google can be live while website email checks remain off.
+
+The dashboard shows whether Google is disabled and displays the current daily and monthly application allowance.
+
+## Recommended development budget: three 50-business lists per day
+
+A Google Places Text Search page supplies at most 20 businesses. A request for 50 businesses can therefore use up to three Google requests. When **Include nearby areas if needed** is enabled, the application can use up to three more requests to fill the list from nearby areas.
+
+| Activity | Maximum Google Places requests |
+| --- | ---: |
+| One 50-business list, exact location only | 3 |
+| One 50-business list, including nearby fill | 6 |
+| Three lists in one day, including nearby fill | 18 |
+| Three such lists per day for 30 days | 540 |
+
+For that deliberate development plan, use:
+
+```env
+GOOGLE_PLACES_DAILY_REQUEST_LIMIT=18
+GOOGLE_PLACES_MONTHLY_REQUEST_LIMIT=900
+GOOGLE_PLACES_REQUESTS_PER_MINUTE=5
+```
+
+The daily and monthly limits are application safety stops, not a replacement for Google Cloud billing controls or quotas. Confirm the active Google pricing, quota, API-key restrictions, and billing alerts before allowing production traffic. A smaller limit is safer while testing.
+
+Duplicate prevention and a small city may yield fewer results than requested. Nearby fill is opt-in for each list and the full address already records the business's city.
+
+## Public website email discovery
+
+For each business with a website, the backend checks no more than three pages: the Google-provided landing page plus up to two likely contact pages. It gives priority to a contact link exposed on the landing page, then tries standard `/contact/` and `/contact-us/` routes when space remains.
+
+It looks for visibly published email text and `mailto:` links. It does not guess addresses, submit forms, bypass `403` blocks, or run a browser engine. As a result, it can miss emails that appear in a browser only after JavaScript renders the page. This is an intentional resource and safety trade-off.
+
+At most 150 website-page fetches are made for a 50-business list. Checks run three at a time, so they do not make Google Places requests but may take longer than fixture mode and can be rejected by individual websites.
+
+To inspect one page without Google or Supabase writes:
+
+```bash
+cd backend
+npm run diagnose:website -- https://example.com/contact/
+```
+
+The diagnostic makes one website request and reports whether the raw HTML contains a supported public email.
+
+## API overview
+
+All application endpoints except health require a Supabase Auth Bearer token.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/health` | Backend health check. |
+| `GET /api/leads/usage` | Current daily and monthly Google application allowance. |
+| `POST /api/outreach/jobs` | Start an outreach-list job. |
+| `GET /api/outreach/jobs` | List recent unexpired jobs. |
+| `GET /api/outreach/jobs/:jobId` | Read job progress and results. |
+| `GET /api/outreach/jobs/:jobId/export` | Download either CSV export. |
+
+## Project layout
+
+```text
+backend/
+  src/
+    controllers/  HTTP request and response handling
+    middleware/   Authentication and per-user request limits
+    routes/       API paths
+    services/     Google, Supabase, CSV, job, and website-check workflows
+    scripts/      Developer diagnostics
+  test/           Offline tests and fixtures
+frontend/         React dashboard
+supabase/         SQL migrations and schema notes
+```
+
+## Development notes
+
+- Keep real credentials in ignored `.env` files only.
+- Test backend changes from `backend/` with `npm test`.
+- Build the dashboard from `frontend/` with `npm run build`.
+- Keep HTTP concerns in controllers, workflow logic in services, and environment parsing in `backend/src/config/env.js`.

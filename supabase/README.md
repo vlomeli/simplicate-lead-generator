@@ -1,53 +1,39 @@
 # Supabase database setup
 
-This directory holds the database schema for the private application. It is
-source-controlled so a future developer can review the schema and reproduce it
-without clicking through undocumented dashboard settings.
+For Supabase project creation, Auth configuration, and environment values, see
+[the Supabase setup guide](../docs/supabase-setup.md).
 
-## Applying the first migration
+Run these migrations once, in filename order, from the Supabase SQL Editor:
 
-1. In the Supabase project dashboard, open **SQL Editor**.
-2. Create a new query.
-3. Paste and run `migrations/202609230001_initial_private_leads.sql`, then
-   `migrations/202609240001_usage_reservations.sql`, then
-   `migrations/202609300001_temporary_outreach_jobs.sql`, then
-   `migrations/202610020001_outreach_nearby_counts.sql`, in that order.
-4. Confirm each query completes successfully. Do not paste any API keys or
-   database passwords into the repository or chat.
+1. `migrations/202609230001_initial_private_leads.sql`
+2. `migrations/202609240001_usage_reservations.sql`
+3. `migrations/202609300001_temporary_outreach_jobs.sql`
+4. `migrations/202610020001_outreach_nearby_counts.sql`
 
-The migration is safe to apply once to the new project. It enables Row Level
-Security on every application table. The browser has no direct access to lead,
-deduplication, export, or usage records; a later protected backend endpoint
-will use the server-only Supabase service key for those operations.
+Do not paste API keys or database passwords into the SQL Editor, repository, or chat. Each migration is additive and must be applied only once.
 
-## Tables
+## Active outreach-list storage
 
-| Table | Purpose |
+| Table | Retention and purpose |
 | --- | --- |
-| `profiles` | Minimal profile record for an authenticated user. |
-| `place_registry` | Permanent `place_id` history for duplicate prevention. |
-| `leads` | Normalized lead records available for review and CSV export. |
-| `lead_searches` | Audit trail of requested searches and provider outcomes. |
-| `lead_exports` | Metadata for generated CSV files; the CSV bytes are not stored here. |
-| `places_usage_monthly` | The durable monthly request counter used by the application safety limit. |
-| `places_usage_daily` | The durable daily request counter used by the application safety limit. |
-| `outreach_jobs` | Short-lived progress and metadata for a requested outreach list. |
-| `outreach_job_results` | Short-lived business/email outcomes deleted with their expired job. |
+| `profiles` | One minimal profile for each Supabase Auth user. |
+| `place_registry` | Permanent Google Place IDs only, used for duplicate prevention. |
+| `places_usage_daily` | Current-day Google request count for the application safety limit. |
+| `places_usage_monthly` | Current-month Google request count for the application safety limit. |
+| `outreach_jobs` | Temporary list request, progress, source, and nearby-fill counts. |
+| `outreach_job_results` | Temporary business and email-check results for each list. |
 
-`reserve_places_usage` is a server-only SQL function that atomically checks
-and increments both counters. A future live Google provider must call it before
-making an outbound request; fixture searches intentionally do not consume it.
+The backend removes expired outreach jobs and their results after seven days by default. `claim_place_id` permanently records only the ID. It does not retain a business's full details or public-email result after the job expires.
 
-`claim_place_id` permanently records only a Google Place ID for duplicate
-prevention. Outreach-list details and any public email outcome expire after
-seven days by default; the backend removes expired lists when a new one starts.
+`reserve_places_usage` atomically checks and increments the daily and monthly application limits before each live Google request. Fixture mode does not use this function or consume Google allowance.
 
-## Security approach
+## Legacy foundation tables
 
-- Supabase Auth owns credentials and password resets; application tables never
-  store passwords.
-- Row Level Security is enabled on every table.
-- `profiles` lets a signed-in user read only their own profile.
-- All lead and usage writes remain backend-only until a future migration adds
-  narrowly scoped policies. The Supabase service-role key will only exist in
-  the backend deployment environment.
+The first migration also created `leads`, `lead_searches`, and `lead_exports` for the earlier direct-search prototype. The current dashboard uses `outreach_jobs` and `outreach_job_results` instead. Leave the older tables in place unless a separately planned migration removes them; deleting them manually can break historical code or migration assumptions.
+
+## Security model
+
+- Supabase Auth owns credentials, invite acceptance, and password recovery. Application tables never store passwords.
+- Row Level Security is enabled on all application tables.
+- The browser can read only its own profile directly.
+- Lead data, duplicate claims, usage reservations, and export data are handled by the authenticated backend using the server-only service-role key.

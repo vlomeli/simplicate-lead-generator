@@ -1,5 +1,5 @@
 # Local data
 
-`exports/` is where generated lead CSV files will be written during Stage 1.
+`exports/` is ignored by Git and is reserved for generated local CSV files from the earlier direct-search workflow.
 
-CSV output is ignored by Git because it is generated data, not source code. Keep durable application data out of this folder until the project chooses a database or another storage approach.
+The current outreach-list workflow returns CSV downloads from the backend and stores its temporary list details in Supabase for seven days. Do not treat this directory as durable application storage.

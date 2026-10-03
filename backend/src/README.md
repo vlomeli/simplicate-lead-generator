@@ -1,22 +1,21 @@
 # Backend source guide
 
-- `app.js` configures Express, middleware, routes, and shared HTTP responses.
+- `app.js` configures Express, shared middleware, health, and route mounts.
 - `server.js` loads configuration and starts the API.
-- `config/` contains configuration read from environment variables.
-- `routes/` declares endpoint paths and maps them to controllers.
-- `controllers/` handles HTTP request and response details.
-- `services/` contains the lead-discovery workflow and external integrations.
-- `utils/` contains small, reusable data transformations.
+- `config/env.js` is the only place that reads and validates environment values.
+- `routes/` defines endpoint paths and authentication/limit middleware.
+- `controllers/` translates HTTP requests and responses.
+- `services/` owns Google Places, Supabase, CSV, outreach-job, and website email-discovery workflows.
+- `scripts/diagnoseWebsiteEmail.js` checks one website page without Google or Supabase writes.
+- `utils/` holds small deterministic transformations.
 
-When implementing a feature, start at its route, follow it to the controller, then put the actual business logic in a service.
+For list building, follow this path:
 
-The outreach-list routes follow the same boundary: the controller starts or
-reads a short-lived job, `outreachJobService.js` coordinates provider and email
-checks, and `outreachRepository.js` owns temporary Supabase records. The job
-route is authenticated and rate-limited. Public website checks remain disabled
-unless `WEBSITE_EMAIL_DISCOVERY_ENABLED=true` is deliberately set.
+```text
+outreachRoutes → outreachController → outreachJobService
+             → provider/email services and outreachRepository
+```
 
-Configuration belongs only in `config/env.js`. Do not read `process.env` from
-controllers, services, or utilities. The health route must work without a
-Google key; a future live-search service will validate the key immediately
-before it makes an external request.
+`outreachJobService.js` is the coordination point. It keeps website checks bounded and delegates all temporary database records to `outreachRepository.js`. Permanent duplicate prevention remains in `place_registry` through its server-only SQL function.
+
+The legacy direct-search files (`leadController.js`, `leadService.js`, and related repository/CSV files) remain because `/api/leads/usage` shares the lead route and the original migration created their tables. The dashboard's current list-building workflow uses `/api/outreach/jobs`.
