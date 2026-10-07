@@ -53,3 +53,48 @@ export async function listRecentOutreachJobs(client, userId, limit = 10) {
   if (error) throw databaseError(error, 'list recent outreach lists');
   return data;
 }
+
+export async function getCoverageMarket(client, queryKey, locationKey) {
+  const { data, error } = await client.from('search_coverage_markets').select()
+    .eq('query_key', queryKey).eq('location_key', locationKey).maybeSingle();
+  if (error) throw databaseError(error, 'read search coverage');
+  return data;
+}
+
+export async function listCoverageMarkets(client) {
+  const { data, error } = await client.from('search_coverage_markets')
+    .select('query_key, location_key, center_lat, center_lng, next_tile, created_at')
+    .order('created_at', { ascending: false });
+  if (error) throw databaseError(error, 'list searched cities');
+  return data;
+}
+
+export async function ensureCoverageMarket(client, queryKey, locationKey, center) {
+  const { error } = await client.from('search_coverage_markets').upsert({
+    query_key: queryKey, location_key: locationKey,
+    center_lat: center.latitude, center_lng: center.longitude,
+  }, { onConflict: 'query_key,location_key', ignoreDuplicates: true });
+  if (error) throw databaseError(error, 'save a searched city');
+}
+
+export async function reserveCoverageTile(client, queryKey, locationKey, center) {
+  const { data, error } = await client.rpc('reserve_search_coverage_tile', {
+    p_query_key: queryKey, p_location_key: locationKey,
+    p_center_lat: center.latitude, p_center_lng: center.longitude,
+  });
+  if (error) throw databaseError(error, 'reserve a search area');
+  return data?.[0] ?? null;
+}
+
+export async function recordCoverageTile(client, tile) {
+  const { error } = await client.from('search_coverage_tiles').insert(tile);
+  if (error) throw databaseError(error, 'record a searched area');
+}
+
+export async function listCoverageTiles(client, queryKey, locationKey) {
+  const { data, error } = await client.from('search_coverage_tiles').select()
+    .eq('query_key', queryKey).eq('location_key', locationKey)
+    .order('tile_index');
+  if (error) throw databaseError(error, 'list searched areas');
+  return data;
+}

@@ -39,9 +39,10 @@ test('live outreach passes a business website URL to public-email discovery', as
     client: {},
     config: { websiteEmailDiscoveryEnabled: true },
     updateJob: async () => {},
-    searchPlaces: async () => [
+    getCoverageMarket: async () => null,
+    searchPage: async () => ({ places: [
       { id: 'place-live', displayName: { text: 'Family Funeral Home' }, websiteUri: 'https://business.test/' },
-    ],
+    ] }),
     claimPlaceId: async () => true,
     discoverWebsiteEmail: async website => {
       websitesChecked.push(website);
@@ -54,7 +55,7 @@ test('live outreach passes a business website URL to public-email discovery', as
   assert.equal(results[0].recipient_email, 'hello@business.test');
 });
 
-test('fills a short city search with an opted-in state fallback', async () => {
+test('fills a sparse city search with an opted-in state fallback', async () => {
   const requests = [];
   const updates = [];
   await executeOutreachJob({
@@ -62,14 +63,15 @@ test('fills a short city search with an opted-in state fallback', async () => {
   }, {
     client: {},
     updateJob: async (_client, _id, values) => { updates.push(values); },
-    searchPlaces: async request => {
+    getCoverageMarket: async () => null,
+    searchPage: async request => {
       requests.push(request);
-      return request.location === 'California'
+      return { places: request.location === 'California'
         ? [
           { id: 'nearby-1', displayName: { text: 'Nearby One' } },
           { id: 'nearby-2', displayName: { text: 'Nearby Two' } },
         ]
-        : [{ id: 'primary-1', displayName: { text: 'Primary One' } }];
+        : [{ id: 'primary-1', displayName: { text: 'Primary One' } }] };
     },
     claimPlaceId: async () => true,
     checkEmail: async () => ({ status: 'no_website' }),
@@ -77,29 +79,86 @@ test('fills a short city search with an opted-in state fallback', async () => {
   });
 
   assert.equal(requests.length, 2);
-  assert.equal(requests[0].maxPages, 3);
   assert.equal(requests[1].location, 'California');
-  assert.equal(requests[1].maxPages, 3);
   assert.equal(updates.at(-1).businesses_found, 3);
   assert.equal(updates.at(-1).primary_businesses_found, 1);
   assert.equal(updates.at(-1).nearby_businesses_found, 2);
 });
 
-test('uses only one state fallback after a short city search', async () => {
+test('uses one state fallback when no city center can be established', async () => {
   const requests = [];
   await executeOutreachJob({
     id: 'job-nearby-cap', query: 'roofing contractor', location: 'Phoenix, AZ', target_count: 50, source: 'google_places', include_nearby: true,
   }, {
     client: {},
     updateJob: async () => {},
-    searchPlaces: async request => { requests.push(request); return []; },
+    getCoverageMarket: async () => null,
+    searchPage: async request => { requests.push(request); return { places: [] }; },
     claimPlaceId: async () => true,
     checkEmail: async () => ({ status: 'no_website' }),
     addResult: async () => {},
   });
 
   assert.deepEqual(requests.map(request => request.location), ['Phoenix, AZ', 'Arizona']);
-  assert.deepEqual(requests.map(request => request.maxPages), [3, 3]);
+  assert.equal(requests.length, 2);
+});
+
+test('repeated live lists reserve fresh areas and stop at six Google requests', async () => {
+  const requests = [];
+  const recorded = [];
+  let nextIndex = 0;
+  const market = { center_lat: 29.76, center_lng: -95.37 };
+  const run = () => executeOutreachJob({
+    id: `job-${nextIndex}`, query: 'roofer', location: 'Houston, TX',
+    target_count: 50, source: 'google_places', include_nearby: false,
+  }, {
+    client: {}, updateJob: async () => {}, addResult: async () => {},
+    claimPlaceId: async () => false, checkEmail: async () => ({ status: 'no_website' }),
+    getCoverageMarket: async () => market,
+    reserveCoverageTile: async () => ({ tile_index: nextIndex++, market_lat: 29.76, market_lng: -95.37 }),
+    recordCoverageTile: async (_client, tile) => { recorded.push(tile); },
+    searchPage: async request => { requests.push(request); return { places: [
+      { id: 'known', displayName: { text: 'Known Roofer' } },
+    ] }; },
+  });
+
+  await run(); await run();
+  assert.equal(requests.length, 12);
+  assert.equal(recorded.length, 12);
+  assert.deepEqual(recorded.map(tile => tile.tile_index), Array.from({ length: 12 }, (_, index) => index));
+  assert.ok(requests.every(request => request.rectangle));
+  assert.ok(recorded.every(tile => tile.duplicates === 1 && tile.new_businesses === 0));
+});
+
+test('a broad-only live list records its starting city without reserving an area', async () => {
+  const savedMarkets = [];
+  let areaReservations = 0;
+  const updates = [];
+  await executeOutreachJob({
+    id: 'job-broad-only', query: 'roofing contractor', location: 'Dallas, TX',
+    target_count: 1, source: 'google_places', include_nearby: false,
+  }, {
+    client: {}, updateJob: async (_client, _id, values) => { updates.push(values); },
+    addResult: async () => {}, claimPlaceId: async () => true,
+    checkEmail: async () => ({ status: 'no_website' }),
+    getCoverageMarket: async () => null,
+    ensureCoverageMarket: async (_client, query, location, center) => {
+      savedMarkets.push({ query, location, center });
+    },
+    reserveCoverageTile: async () => { areaReservations += 1; return null; },
+    searchPage: async () => ({ places: [{
+      id: 'dallas-1', displayName: { text: 'Dallas Roofing' },
+      location: { latitude: 32.78, longitude: -96.8 },
+    }] }),
+  });
+
+  assert.equal(updates.at(-1).status, 'completed');
+  assert.equal(updates.at(-1).businesses_found, 1);
+  assert.equal(areaReservations, 0);
+  assert.deepEqual(savedMarkets, [{
+    query: 'roofing contractor', location: 'dallas, tx',
+    center: { latitude: 32.78, longitude: -96.8 },
+  }]);
 });
 
 test('checks no more than three business websites at a time', async () => {
@@ -140,7 +199,8 @@ test('records a daily-limit failure without adding a zero-result outreach list',
   }, {
     client: {},
     updateJob: async (_client, _id, values) => { updates.push(values); },
-    searchPlaces: async () => { throw limitError; },
+    getCoverageMarket: async () => null,
+    searchPage: async () => { throw limitError; },
   });
 
   assert.equal(updates.at(-1).status, 'failed');

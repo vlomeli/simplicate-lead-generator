@@ -53,6 +53,7 @@ test('offline workflow persists and exports only leads newly claimed by the regi
   const options = {
     userId: 'user-1',
     client: {},
+    config: { googlePlacesEnabled: false },
     exportCsv: async leads => {
       exports.push(leads);
       return { filename: 'test.csv', filePath: '/tmp/test.csv', leadCount: leads.length };

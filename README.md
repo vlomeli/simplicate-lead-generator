@@ -1,137 +1,136 @@
 # Simplicate Lead Generator
 
-Simplicate helps a signed-in user build an outreach list of businesses, find publicly displayed business emails when available, and download CSVs ready for review or an email workflow.
+A private outreach tool for Simplicate. Signed-in teammates search for businesses, find publicly listed emails on their websites, review the results, and download CSVs for a separate email workflow. It does not send email.
+
+## Contents
+
+- [What it does](#what-it-does)
+- [Architecture and data](#architecture-and-data)
+- [Local setup](#local-setup)
+- [Search and email logic](#search-and-email-logic)
+- [Private beta deployment](#private-beta-deployment)
+- [API and project layout](#api-and-project-layout)
 
 ## What it does
 
-1. Searches fixture data or Google Places for a business type and location.
-2. Skips Google Place IDs that have already been collected.
-3. Optionally checks each business website for a public email address.
-4. Creates a temporary list that can be reopened for seven days.
-5. Provides two downloads: an outreach-list CSV for businesses with a found email, and a full-list CSV with every email-check outcome.
+1. A Supabase Auth user chooses a business type, starting city, and target of up to 50 businesses, then confirms the search.
+2. The backend searches fixtures or Google Places, skips Place IDs already collected, and checks public business websites for emails when enabled.
+3. The dashboard shows progress, recent lists, usage limits, and a read-only map of starting cities searched since coverage tracking began.
+4. The **full CSV** includes every saved business and its email-check outcome. The **outreach CSV** includes only businesses with a found public email. Both are downloaded for review; no outreach is sent by this app.
 
-Only the Google Place ID registry is permanent. Business details, email outcomes, and CSV-ready list data expire after seven days.
+Fifty is a target, not a guarantee. A search can return fewer new businesses or fewer emails.
 
-## Documentation
+## Architecture and data
 
-| Guide | Use it for |
+```text
+React/Vite dashboard → Express API → Supabase Auth and Postgres
+                                 → Google Places (optional)
+                                 → public business websites (optional)
+```
+
+The browser uses a Supabase publishable key and sends its Auth token to the API. The API verifies the user, applies per-user and Google-request limits, and holds the Supabase secret key and Google key. Neither secret belongs in the frontend.
+
+| Stored data | Retention |
 | --- | --- |
-| [Supabase setup](docs/supabase-setup.md) | Project creation, Auth URLs, environment values, and migrations. |
-| [Google Places setup](docs/google-places-setup.md) | Billing, backend API key, restrictions, alerts, and live-mode safeguards. |
-| [Architecture](docs/architecture.md) | Component boundaries, data retention, and request flow. |
-| [Deployment guide](docs/deployment.md) | Private beta deployment with a Vercel frontend and Render backend. |
-| [Database reference](supabase/README.md) | Active and legacy tables, retention, and SQL migration order. |
+| Google Place IDs in `place_registry` | Permanent, to prevent repeats. |
+| Search centers and aggregate area counts | Permanent, to move repeated searches to fresh areas; no business details. |
+| Outreach jobs, business details, and email outcomes | Seven days by default, then removed by the backend. |
+| Auth accounts | Managed by Supabase Auth. |
+
+CSV files are generated from temporary job data, not kept as durable application files. The older `leads`, `lead_searches`, and `lead_exports` tables belong to an earlier direct-search prototype; leave them in place unless a planned migration removes them. The current dashboard uses `outreach_jobs` and `outreach_job_results`.
 
 ## Local setup
 
-Apply the four SQL migrations in order before using authenticated list building. See [supabase/README.md](supabase/README.md).
+You need Node.js/npm and a Supabase project. Google Places is optional until you deliberately enable live mode. Never commit `.env` files or share keys in screenshots or chat.
 
-Start the backend:
+### 1. Set up Supabase
 
-```bash
-cd backend
-npm install
-cp .env.example .env
-npm run dev
-```
+Create a project and copy its Project URL, browser **publishable key**, and server-only **secret/service-role key**. In Supabase Auth URL Configuration, set `http://localhost:5173` as the Site URL and an allowed redirect URL. Add the hosted frontend URL later if deploying. Invite users through Supabase Auth; an invite opens the password-setup screen before the dashboard. Password recovery remains available from sign-in.
 
-Start the dashboard in another terminal:
+Run the following SQL files **once, in order**, in the Supabase SQL Editor. Existing installations should run only migrations they have not already applied:
 
-```bash
-cd frontend
-npm install
-cp .env.example .env
-npm run dev
-```
+1. [`202609230001_initial_private_leads.sql`](supabase/migrations/202609230001_initial_private_leads.sql)
+2. [`202609240001_usage_reservations.sql`](supabase/migrations/202609240001_usage_reservations.sql)
+3. [`202609300001_temporary_outreach_jobs.sql`](supabase/migrations/202609300001_temporary_outreach_jobs.sql)
+4. [`202610020001_outreach_nearby_counts.sql`](supabase/migrations/202610020001_outreach_nearby_counts.sql)
+5. [`202610070001_search_coverage.sql`](supabase/migrations/202610070001_search_coverage.sql)
 
-Set the Supabase values in both `.env` files. `SUPABASE_SERVICE_ROLE_KEY` is backend-only. Never put it or a Google API key in `frontend/.env`. Restart the backend after changing a backend `.env` value.
+Row Level Security is enabled on application tables. The browser reads its own profile; the authenticated backend handles jobs, duplicate claims, coverage, usage reservations, and CSV data with the server-only key.
 
-## Fixture mode and live mode
+### 2. Configure local environment
 
-Both external integrations are off by default:
+Copy `backend/.env.example` to `backend/.env` and `frontend/.env.example` to `frontend/.env`. Set these values:
+
+| File | Required values |
+| --- | --- |
+| `backend/.env` | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `CORS_ORIGIN=http://localhost:5173` |
+| `frontend/.env` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL=http://localhost:5000` |
+
+Start safely with both backend switches off:
 
 ```env
 GOOGLE_PLACES_ENABLED=false
 WEBSITE_EMAIL_DISCOVERY_ENABLED=false
 ```
 
-With both values false, list building uses fixtures only. It makes no Google Places request and does not fetch business websites.
+Fixture mode makes **no Google or business-website requests**. Fixtures use fixed IDs, so after their first use a repeated fixture list may correctly show zero new businesses. Restart the backend after changing its `.env`.
 
-Set `GOOGLE_PLACES_ENABLED=true` only when intentionally running a live Google test. Set `WEBSITE_EMAIL_DISCOVERY_ENABLED=true` only when intentionally allowing public website checks. These switches are independent: Google can be live while website email checks remain off.
+### 3. Add Google Places only for live searches
 
-The dashboard shows whether Google is disabled and displays the current daily and monthly application allowance.
+In a dedicated Google Cloud project, attach billing, enable the Places API used by this backend, and create an API key restricted to that API. Keep it only in `backend/.env` or the backend host's secret settings as `GOOGLE_PLACES_API_KEY`. Apply the strongest application restriction your host supports. Review current pricing and quotas before enabling it; the app cannot guarantee a free bill.
 
-## Recommended development budget: three 50-business lists per day
+Set a Google Cloud billing budget with alerts at 50%, 80%, and 90% of the monthly amount you are willing to spend, and use the lowest practical Places quota. These are secondary safeguards to the backend's limits. For a controlled live email test, set both backend switches to `true` and restart the backend. You can enable Google while leaving website checks off if testing search coverage alone.
 
-A Google Places Text Search page supplies at most 20 businesses. A request for 50 businesses can therefore use up to three Google requests. **Fifty is a target, not a guarantee:** Google can return fewer results when a query has limited matches or does not provide another results page. When **Expand to the surrounding region if needed** is enabled, the application searches the entered city first, then makes a state-level fallback search if the list is short.
+### 4. Run and verify
 
-| Activity | Maximum Google Places requests |
-| --- | ---: |
-| One 50-business list, exact location only | 3 |
-| One 50-business list, including regional fallback | 6 |
-| Three lists in one day, including regional fallback | 18 |
-| Three such lists per day for 30 days | 540 |
-
-For that deliberate development plan, use:
-
-```env
-GOOGLE_PLACES_DAILY_REQUEST_LIMIT=18
-GOOGLE_PLACES_MONTHLY_REQUEST_LIMIT=900
-GOOGLE_PLACES_REQUESTS_PER_MINUTE=5
-```
-
-The daily and monthly limits are application safety stops, not a replacement for Google Cloud billing controls or quotas. Confirm the active Google pricing, quota, API-key restrictions, and billing alerts before allowing production traffic. A smaller limit is safer while testing.
-
-Duplicate prevention and a small city may yield fewer results than requested. A state can be entered as the location, but Google still returns relevance-ranked results rather than an exhaustive statewide directory. Regional expansion is opt-in and supports US city-and-state locations such as `Phoenix, AZ` or `Phoenix, Arizona`; it searches the corresponding state only when the city result is short. The full address already records the business's city.
-
-## Public website email discovery
-
-For each business with a website, the backend checks no more than three pages: the Google-provided landing page plus up to two likely contact pages. It gives priority to a contact link exposed on the landing page, then tries standard `/contact/` and `/contact-us/` routes when space remains.
-
-It looks for visibly published email text and `mailto:` links. It does not guess addresses, submit forms, bypass `403` blocks, or run a browser engine. As a result, it can miss emails that appear in a browser only after JavaScript renders the page. This is an intentional resource and safety trade-off.
-
-At most 150 website-page fetches are made for a 50-business list. Checks run three at a time, so they do not make Google Places requests but may take longer than fixture mode and can be rejected by individual websites.
-
-To inspect one page without Google or Supabase writes:
+Use two terminals:
 
 ```bash
 cd backend
-npm run diagnose:website -- https://example.com/contact/
+npm install
+npm run dev
 ```
 
-The diagnostic makes one website request and reports whether the raw HTML contains a supported public email.
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-## API overview
+Open the local dashboard, sign in, and check the usage card and mode indicator before building a list. From `backend/`, run `npm test`; from `frontend/`, run `npm run build`. These are local checks, not live Google searches. For a live test, confirm remaining daily/monthly allowance first, then inspect both CSVs and the Google Cloud usage dashboard afterward.
+
+To diagnose one public webpage without Google or Supabase writes, run `npm run diagnose:website -- https://example.com/contact/` from `backend/`. That command **does** fetch the specified website once.
+
+## Search and email logic
+
+- **Google budget:** Each live list uses at most six Places Text Search requests. The backend reserves daily/monthly allowance before every Google call. The per-user limiter permits five list starts per minute. A deliberate plan for three 50-business lists per day is `GOOGLE_PLACES_DAILY_REQUEST_LIMIT=18`, `GOOGLE_PLACES_MONTHLY_REQUEST_LIMIT=900`, and `GOOGLE_PLACES_REQUESTS_PER_MINUTE=5`. Start lower while testing. These are application safety stops, not Google billing caps.
+- **Finding new businesses:** Google returns at most 20 candidates per Text Search request. The first search for a business type and starting location makes a broad request to establish a center, then samples fresh 5 km areas. Repeating the same search advances to unused areas. If city samples are sparse and **Expand to region** is checked, remaining requests may search the matching US state. The target of 50 may still be missed; this is not an exhaustive city or state directory.
+- **Preventing duplicates:** New Place IDs are claimed in the permanent registry. Searches skip IDs already claimed, including those from older lists. Business details are not retained permanently.
+- **Finding emails:** For each business website, the backend fetches no more than three likely pages, checking visible HTML text and `mailto:` links. For 50 businesses that means at most 150 website-page fetches, with three businesses checked concurrently. Website fetches do not consume Google Places requests. The checker does not guess addresses, submit forms, bypass `403` responses, or render JavaScript-only pages, so some valid emails will be missed. Review addresses before sending outreach.
+- **Reading coverage:** The city map uses saved coordinates and no map provider calls. It shows tracked live starting cities; older searches without coordinates cannot be plotted. The smaller area diagram is for the selected business type and location. Its counts cover sampled areas across lists, **not** the initial broad lookup or the full list total.
+
+## Private beta deployment
+
+The intended small beta is a Vercel frontend, Render Node API, and Supabase Auth/Postgres. Provider free plans and limits can change; verify them in the provider dashboards before relying on them.
+
+1. Run local tests/build and apply outstanding SQL migrations before deployment. Create a Render web service with root directory `backend`, build command `npm ci`, and start command `npm start`. Set `NODE_ENV=production`, the backend Supabase values, Google key and safety limits, and both feature flags to `false` in Render's environment settings. Do not upload a backend `.env` file. `GET https://your-api-host/api/health` should return `{"status":"ok"}`.
+2. Create a Vercel project with root directory `frontend`. Set `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, and `VITE_API_URL=https://your-api-host` as build-time variables.
+3. Set Render's `CORS_ORIGIN` to the **exact** Vercel origin. If local development must continue, use a comma-separated value such as `http://localhost:5173,https://your-vercel-project-url`. Add the Vercel URL to Supabase Auth's Site URL and redirect allowlist; keep the local redirect too. Redeploy services when their environment values change.
+4. Verify sign-in, invites/password recovery, fixture list building, recent lists, and both CSV downloads **before** enabling Google. Then deliberately enable `GOOGLE_PLACES_ENABLED=true` and, if wanted, `WEBSITE_EMAIL_DISCOVERY_ENABLED=true` on Render. Begin with one controlled live list and compare its app usage card with Google Cloud usage and billing alerts.
+
+To stop new external requests, set both flags back to `false` and restart/redeploy the backend. When Simplicate supplies its own Google project and billing, replace the backend key there; no frontend code change is needed.
+
+## API and project layout
 
 All application endpoints except health require a Supabase Auth Bearer token.
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/health` | Backend health check. |
-| `GET /api/leads/usage` | Current daily and monthly Google application allowance. |
-| `POST /api/outreach/jobs` | Start an outreach-list job. |
-| `GET /api/outreach/jobs` | List recent unexpired jobs. |
-| `GET /api/outreach/jobs/:jobId` | Read job progress and results. |
-| `GET /api/outreach/jobs/:jobId/export` | Download either CSV export. |
+| `GET /api/health` | Health check. |
+| `GET /api/leads/usage` | Daily/monthly Google allowance. |
+| `POST /api/outreach/jobs` | Start a list. |
+| `GET /api/outreach/jobs` and `GET /api/outreach/jobs/:jobId` | Recent lists, progress, and results. |
+| `GET /api/outreach/jobs/:jobId/export?type=full\|outreach` | Download a CSV. |
+| `GET /api/outreach/coverage/cities` and `GET /api/outreach/coverage?query=...&location=...` | Read city and sampled-area coverage. |
 
-## Project layout
-
-```text
-backend/
-  src/
-    controllers/  HTTP request and response handling
-    middleware/   Authentication and per-user request limits
-    routes/       API paths
-    services/     Google, Supabase, CSV, job, and website-check workflows
-    scripts/      Developer diagnostics
-  test/           Offline tests and fixtures
-frontend/         React dashboard
-supabase/         SQL migrations and schema notes
-```
-
-## Development notes
-
-- Keep real credentials in ignored `.env` files only.
-- Test backend changes from `backend/` with `npm test`.
-- Build the dashboard from `frontend/` with `npm run build`.
-- Keep HTTP concerns in controllers, workflow logic in services, and environment parsing in `backend/src/config/env.js`.
+`backend/src/` contains routes, controllers, services, middleware, and developer scripts; `frontend/` is the React dashboard; `supabase/migrations/` is the database history. The current list path is `outreachRoutes → outreachController → outreachJobService → provider/email services and outreachRepository`. `backend/data/exports/` is ignored local storage from the older direct-search workflow, not current list storage.

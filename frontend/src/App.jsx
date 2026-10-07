@@ -87,7 +87,7 @@ function clearAuthLinkFromUrl() {
 }
 
 function HelpModal({ onClose }) {
-  return <div className="confirmation-backdrop" role="presentation"><section className="help-modal card" role="dialog" aria-modal="true" aria-labelledby="help-title"><div className="help-heading"><div><p className="eyebrow">Quick guide</p><h2 id="help-title">How Simplicate Leads works</h2></div><button type="button" className="help-close" onClick={onClose} aria-label="Close help">×</button></div><ol className="help-steps"><li><strong>Sign in securely.</strong> Invited users choose a password from their email link. Existing users can use <em>Forgot password?</em> from the sign-in screen.</li><li><strong>Choose a business type and starting city.</strong> Set a target of up to 50 businesses, then review the confirmation before the search begins.</li><li><strong>Optionally expand the search.</strong> When regional fallback is enabled, the app searches the city first and then the matching US state only if the list is short. A list uses at most six Google Places requests.</li><li><strong>Check public websites.</strong> The app looks for visibly published email addresses on up to three likely pages per business. It does not guess addresses, bypass blocked sites, or render JavaScript-only pages.</li><li><strong>Export what you need.</strong> The full CSV includes every business checked. The outreach CSV includes only businesses with a public email. Lists remain available for seven days.</li></ol><p className="confirmation-note">Fixture mode makes no Google requests. In live mode, the usage card shows the application’s daily and monthly safety allowance.</p><div className="confirmation-actions"><button type="button" className="primary" onClick={onClose}>Got it</button></div></section></div>;
+  return <div className="confirmation-backdrop" role="presentation"><section className="help-modal card" role="dialog" aria-modal="true" aria-labelledby="help-title"><div className="help-heading"><div><p className="eyebrow">Quick guide</p><h2 id="help-title">How Simplicate Leads works</h2></div><button type="button" className="help-close" onClick={onClose} aria-label="Close help">×</button></div><ol className="help-steps"><li><strong>Sign in securely.</strong> Invited users choose a password from their email link. Existing users can use <em>Forgot password?</em> from the sign-in screen.</li><li><strong>Choose a business type and starting city.</strong> Set a target of up to 50 businesses, then review the confirmation before the search begins.</li><li><strong>Search fresh city areas.</strong> Live lists sample new small areas near the starting city on repeated searches. If the city samples are sparse and regional fallback is enabled, the app may try the state. Each list uses at most six Google Places requests; Google may still return fewer than 50 new businesses.</li><li><strong>Check public websites.</strong> The app looks for visibly published email addresses on up to three likely pages per business. It does not guess addresses, bypass blocked sites, or render JavaScript-only pages.</li><li><strong>Export what you need.</strong> The full CSV includes every business checked. The outreach CSV includes only businesses with a public email. Lists remain available for seven days.</li></ol><p className="confirmation-note">The coverage diagram shows sampled areas, not complete city coverage. Fixture mode makes no Google requests.</p><div className="confirmation-actions"><button type="button" className="primary" onClick={onClose}>Got it</button></div></section></div>;
 }
 
 function SetupNotice() {
@@ -123,6 +123,10 @@ function Dashboard({ session }) {
   const [usageError, setUsageError] = useState('');
   const [recentJobs, setRecentJobs] = useState([]);
   const [pendingSearch, setPendingSearch] = useState(null);
+  const [coverage, setCoverage] = useState(null);
+  const [coverageError, setCoverageError] = useState('');
+  const [cityMarkets, setCityMarkets] = useState([]);
+  const [citiesError, setCitiesError] = useState('');
 
   const loadUsage = async () => {
     try {
@@ -141,6 +145,47 @@ function Dashboard({ session }) {
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+  const loadCoverage = async (query, location) => {
+    const params = new URLSearchParams({ query, location });
+    const response = await fetch(`${apiUrl}/api/outreach/coverage?${params}`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Unable to load search coverage.');
+    setCoverage(data); setCoverageError('');
+  };
+
+  const loadSearchedCities = async () => {
+    try {
+      const response = await fetch(`${apiUrl}/api/outreach/coverage/cities`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to load searched cities.');
+      setCityMarkets(data); setCitiesError('');
+    } catch (requestError) { setCitiesError(requestError.message); }
+  };
+
+  useEffect(() => { loadSearchedCities(); }, [session.access_token]);
+
+  useEffect(() => {
+    setCoverage(null);
+    if (!form.query.trim() || !form.location.trim()) return undefined;
+    let cancelled = false;
+    const timeout = window.setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ query: form.query, location: form.location });
+        const response = await fetch(`${apiUrl}/api/outreach/coverage?${params}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Unable to load search coverage.');
+        if (!cancelled) { setCoverage(data); setCoverageError(''); }
+      } catch (requestError) { if (!cancelled) setCoverageError(requestError.message); }
+    }, 450);
+    return () => { cancelled = true; window.clearTimeout(timeout); };
+  }, [form.query, form.location, session.access_token]);
+
   const loadRecentJobs = async () => {
     const response = await fetch(`${apiUrl}/api/outreach/jobs`, {
       headers: { Authorization: `Bearer ${session.access_token}` },
@@ -157,7 +202,9 @@ function Dashboard({ session }) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Unable to load outreach-list progress.');
     setJob(data);
-    if (data.status === 'completed') await Promise.all([loadUsage(), loadRecentJobs()]);
+    if (data.status === 'completed') await Promise.all([
+      loadUsage(), loadRecentJobs(), loadCoverage(data.query, data.location), loadSearchedCities(),
+    ]);
   };
 
   useEffect(() => {
@@ -222,15 +269,21 @@ function Dashboard({ session }) {
       <label className="nearby-option"><input type="checkbox" checked={form.includeNearby} onChange={event => setForm({ ...form, includeNearby: event.target.checked })} />Expand to region</label>
       <button className="primary" disabled={busy || ['queued', 'running'].includes(job?.status)}>{busy ? 'Starting…' : 'Build list'}</button>
     </form>
+    <CityHistoryMap markets={cityMarkets} error={citiesError} onChoose={market =>
+      setForm(current => ({ ...current, query: market.query, location: formatCityName(market.location) }))} />
+    <CoverageMap coverage={coverage} error={coverageError} query={form.query} location={form.location} />
     {error && <p className="form-error large-error">{error}</p>}
     {pendingSearch && <SearchConfirmation search={pendingSearch} fixtureMode={fixtureMode} onCancel={() => setPendingSearch(null)} onConfirm={() => { const search = pendingSearch; setPendingSearch(null); buildList(search); }} />}
     {job && <OutreachJob job={job} onDownload={downloadCsv} />}
-    <RecentOutreachJobs jobs={recentJobs} onOpen={jobToOpen => loadJob(jobToOpen.id).catch(openError => setError(openError.message))} />
+    <RecentOutreachJobs jobs={recentJobs} onOpen={jobToOpen => {
+      setForm(current => ({ ...current, query: jobToOpen.query, location: jobToOpen.location }));
+      loadJob(jobToOpen.id).catch(openError => setError(openError.message));
+    }} />
   </section>;
 }
 
 function SearchConfirmation({ search, fixtureMode, onCancel, onConfirm }) {
-  const maximumRequests = search.includeNearby ? 6 : 3;
+  const maximumRequests = 6;
   return <div className="confirmation-backdrop" role="presentation"><section className="confirmation card" role="dialog" aria-modal="true" aria-labelledby="confirm-search-title"><p className="eyebrow">Confirm search</p><h2 id="confirm-search-title">Start this list?</h2><dl><div><dt>Business type</dt><dd>{search.query}</dd></div><div><dt>Starting location</dt><dd>{search.location}</dd></div><div><dt>Target</dt><dd>{search.targetCount} businesses</dd></div>{search.includeNearby && <div><dt>Regional fallback</dt><dd>Search the surrounding state if needed</dd></div>}</dl><p className="confirmation-note">{fixtureMode ? 'Fixture mode is active. This search will not contact Google.' : `This search can use up to ${maximumRequests} Google Places requests.`}</p><div className="confirmation-actions"><button type="button" className="quiet-button" onClick={onCancel}>Cancel</button><button type="button" className="primary" onClick={onConfirm}>Confirm search</button></div></section></div>;
 }
 
@@ -268,7 +321,7 @@ function OutreachJob({ job, onDownload }) {
     {nearbySummary && <p className="job-note">{nearbySummary}</p>}
     {isWorking && <p className="job-note">The list is being prepared. This page refreshes progress automatically.</p>}
     {limitMessage && <p className="form-error large-error">No Google request was made.</p>}
-    {job.status === 'completed' && <p className="job-note">Results expire after seven days. The outreach CSV contains only publicly listed emails; full results includes every checked business.</p>}
+    {job.status === 'completed' && <p className="job-note">Results expire after seven days. The outreach CSV contains only publicly listed emails; full results includes every checked business. A target of 50 is not guaranteed.</p>}
     {job.results.length > 0 && <div className="table-wrap"><table><thead><tr><th>Business</th><th>Email status</th><th>Reviews</th><th>Contact</th></tr></thead><tbody>{job.results.map(result => <tr key={result.placeId}><td><strong>{result.name}</strong><small>{result.address || 'No address listed'}</small></td><td><span className="tag">{result.emailStatus.replaceAll('_', ' ')}</span></td><td>{result.reviews ?? '—'}</td><td>{result.email || result.phone || '—'}</td></tr>)}</tbody></table></div>}
   </section>;
 }
@@ -285,6 +338,99 @@ function UsageCard({ usage, error }) {
 }
 
 function UsageStat({ label, value, limit }) { return <div className="usage-stat"><span>{label}</span><strong>{value} <small>/ {limit}</small></strong><em>{limit - value} remaining</em></div>; }
+
+// A small offline reference outline of the contiguous US. No map tiles,
+// geocoding service, or browser-side API key is needed for these markers.
+const usOutline = [
+  [-124.7, 48.5], [-117, 49], [-108, 49], [-98, 49], [-95, 49],
+  [-90, 47], [-86, 46], [-83, 42], [-79, 43], [-73, 45], [-71, 45],
+  [-67, 47], [-70, 43], [-72, 41], [-74, 40], [-75, 37], [-78, 34],
+  [-81, 29], [-80, 25], [-82, 25], [-85, 30], [-89, 30], [-93, 29],
+  [-97, 26], [-100, 29], [-104, 29], [-106, 31], [-111, 31],
+  [-114, 32], [-117, 32], [-120, 37], [-123, 42],
+];
+
+function mapPosition(latitude, longitude) {
+  return { x: (longitude + 125) / 59 * 100, y: (50 - latitude) / 26 * 100 };
+}
+
+function formatCityName(value) {
+  return value.split(',').map((part, index) => {
+    const cleaned = part.trim();
+    if (index > 0 && cleaned.length === 2) return cleaned.toUpperCase();
+    return cleaned.replace(/\b\p{L}/gu, letter => letter.toUpperCase());
+  }).join(', ');
+}
+
+function CityHistoryMap({ markets, error, onChoose }) {
+  const [selectedLocation, setSelectedLocation] = useState(null);
+  const citiesByLocation = new Map();
+  for (const market of markets) {
+    const city = citiesByLocation.get(market.location) ?? {
+      location: market.location, latitude: market.latitude, longitude: market.longitude, searches: [],
+    };
+    city.searches.push(market);
+    citiesByLocation.set(market.location, city);
+  }
+  const cities = [...citiesByLocation.values()].sort((a, b) => a.location.localeCompare(b.location));
+  const selected = cities.find(city => city.location === selectedLocation) ?? cities[0];
+  const outlinePoints = usOutline.map(([longitude, latitude]) => {
+    const point = mapPosition(latitude, longitude);
+    return `${point.x},${point.y}`;
+  }).join(' ');
+  return <section className="city-history card" aria-label="Cities searched">
+    <div className="city-history-heading"><div><p className="eyebrow">Search history map</p><h2>Cities searched</h2><p>Red dots mark starting cities tracked for this workspace since coverage was enabled. Choose a city to view the business types searched there.</p></div><strong>{cities.length} {cities.length === 1 ? 'city' : 'cities'}</strong></div>
+    {error && <p className="form-error">{error}</p>}
+    <div className="city-history-body"><div className="city-map-plot" role="group" aria-label="Searched cities on a map of the contiguous United States">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon points={outlinePoints} /></svg>
+      {cities.filter(city => city.latitude >= 24 && city.latitude <= 50 && city.longitude >= -125 && city.longitude <= -66).map(city => {
+        const point = mapPosition(city.latitude, city.longitude);
+        return <button type="button" key={city.location} className={`city-map-dot ${selected?.location === city.location ? 'selected' : ''}`}
+          style={{ left: `${point.x}%`, top: `${point.y}%` }} onClick={() => setSelectedLocation(city.location)}
+          aria-label={`${formatCityName(city.location)}: ${city.searches.length} business types`} />;
+      })}
+      {!cities.length && <span className="city-map-empty">Live searches will appear here</span>}
+    </div><div className="city-history-detail">
+      {selected ? <><h3>{formatCityName(selected.location)}</h3><p>{selected.searches.length} {selected.searches.length === 1 ? 'business type' : 'business types'} tracked</p>
+        <div className="city-searches">{selected.searches.map(market => <button type="button" key={market.query} onClick={() => onChoose(market)}>
+          <strong>{market.query}</strong><span>View sampled areas</span>
+        </button>)}</div></> : <p>No cities tracked yet. Fixture lists and older searches without saved coordinates do not create dots.</p>}
+      {cities.length > 1 && <div className="city-list" aria-label="All tracked cities">{cities.map(city =>
+        <button type="button" key={city.location} className={selected?.location === city.location ? 'selected' : ''}
+          onClick={() => setSelectedLocation(city.location)}>{formatCityName(city.location)}</button>)}</div>}
+    </div></div>
+    <p className="city-map-note">Approximate lower-48 outline. Other locations remain listed when tracked, but are not plotted here.</p>
+  </section>;
+}
+
+function CoverageMap({ coverage, error, query, location }) {
+  const [selected, setSelected] = useState(null);
+  const areas = coverage?.areas ?? [];
+  const center = coverage?.center;
+  const displayed = areas.find(area => area.index === selected) ?? areas.at(-1);
+  const totals = areas.reduce((sum, area) => ({
+    duplicates: sum.duplicates + area.duplicates,
+    newBusinesses: sum.newBusinesses + area.newBusinesses,
+  }), { duplicates: 0, newBusinesses: 0 });
+  return <section className="coverage-card card" aria-label="Search coverage">
+    <div className="coverage-copy"><p className="eyebrow">Area samples for selected search</p><h2>{query || 'Business type'} near {location || 'starting city'}</h2><p>These dots show small areas sampled for this business type and starting city. Counts are across all lists for this search. The initial broad city lookup is not plotted; the latest list’s full total is shown below.</p>
+      <div className="coverage-totals"><span>{areas.length} areas sampled</span><span>{totals.newBusinesses} saved from mapped areas</span><span>{totals.duplicates} already collected in mapped areas</span></div>
+      {error && <p className="form-error">{error}</p>}
+      {displayed && <div className="coverage-detail"><strong>Area {displayed.index + 1}</strong><span>Sampled {formatListDate(displayed.searchedAt)}</span><span>{displayed.returned} Google candidates · {displayed.duplicates} already collected · {displayed.newBusinesses} saved</span></div>}
+    </div>
+    <div className="coverage-plot" role="group" aria-label="Sampled areas around the starting city">
+      <span className="coverage-north">N</span><span className="coverage-city">Starting city</span>
+      {center && areas.map(area => {
+        const x = 50 + ((area.longitude - center.longitude) * Math.cos(center.latitude * Math.PI / 180) * 111.32 / 5) * 3.5;
+        const y = 50 - ((area.latitude - center.latitude) * 111.32 / 5) * 3.5;
+        return <button key={area.index} type="button" className={`coverage-dot ${selected === area.index ? 'selected' : ''}`}
+          style={{ left: `${Math.max(4, Math.min(96, x))}%`, top: `${Math.max(4, Math.min(96, y))}%` }}
+          onClick={() => setSelected(area.index)} aria-label={`Area ${area.index + 1}: ${area.newBusinesses} new businesses`} />;
+      })}
+      {!areas.length && <span className="coverage-empty">No live areas sampled yet</span>}
+    </div>
+  </section>;
+}
 
 function LeadResults({ result }) {
   const download = () => {
