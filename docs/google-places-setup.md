@@ -2,6 +2,7 @@
 
 Keep Google disabled until Supabase works in fixture mode and a live test is
 intentional. The application can run completely without a Google API key.
+For the hosted beta sequence, see the [deployment guide](deployment.md).
 
 ## 1. Create and secure the Google Cloud project
 

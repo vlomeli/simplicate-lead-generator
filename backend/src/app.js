@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 
+import { config } from './config/env.js';
 import leadRoutes from './routes/leadRoutes.js';
 import outreachRoutes from './routes/outreachRoutes.js';
 
@@ -8,7 +9,12 @@ import outreachRoutes from './routes/outreachRoutes.js';
 // easy to test later without opening a network port.
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || config.corsOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('This origin is not allowed to call the API.'));
+  },
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

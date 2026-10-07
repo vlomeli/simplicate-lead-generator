@@ -19,6 +19,7 @@ Only the Google Place ID registry is permanent. Business details, email outcomes
 | [Supabase setup](docs/supabase-setup.md) | Project creation, Auth URLs, environment values, and migrations. |
 | [Google Places setup](docs/google-places-setup.md) | Billing, backend API key, restrictions, alerts, and live-mode safeguards. |
 | [Architecture](docs/architecture.md) | Component boundaries, data retention, and request flow. |
+| [Deployment guide](docs/deployment.md) | Private beta deployment with a Vercel frontend and Render backend. |
 | [Database reference](supabase/README.md) | Active and legacy tables, retention, and SQL migration order. |
 
 ## Local setup

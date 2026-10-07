@@ -30,6 +30,31 @@ export function readBoolean(value, { name, defaultValue }) {
 }
 
 /**
+ * Reads one or more exact dashboard origins for browser CORS requests. The
+ * host can supply a comma-separated local and production allowlist.
+ */
+export function readAllowedOrigins(value, { name, defaultValue }) {
+  const rawOrigins = value === undefined || value === '' ? defaultValue : value;
+  const origins = rawOrigins.split(',').map(origin => origin.trim()).filter(Boolean);
+
+  if (!origins.length) throw new Error(`${name} must contain at least one HTTP(S) origin.`);
+
+  return origins.map(origin => {
+    const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+    let parsed;
+    try {
+      parsed = new URL(normalizedOrigin);
+    } catch {
+      throw new Error(`${name} must contain valid HTTP(S) origins.`);
+    }
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.origin !== normalizedOrigin) {
+      throw new Error(`${name} must contain valid HTTP(S) origins.`);
+    }
+    return parsed.origin;
+  });
+}
+
+/**
  * Creates application configuration from an environment-like object.
  * Exported separately from `config` so the rules can be tested without
  * changing process.env or requiring a real API key.
@@ -40,6 +65,10 @@ export function createConfig(environment = process.env) {
     port: readPositiveInteger(environment.PORT, {
       name: 'PORT',
       defaultValue: 5000,
+    }),
+    corsOrigins: readAllowedOrigins(environment.CORS_ORIGIN, {
+      name: 'CORS_ORIGIN',
+      defaultValue: 'http://localhost:5173',
     }),
     googlePlacesApiKey: environment.GOOGLE_PLACES_API_KEY || '',
     googlePlacesEnabled: readBoolean(environment.GOOGLE_PLACES_ENABLED, {
