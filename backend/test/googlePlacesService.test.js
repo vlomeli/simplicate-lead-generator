@@ -65,6 +65,25 @@ test('uses a nearby text query when a job opts into nearby expansion', async () 
   });
 });
 
+test('sends a geographic restriction for a sampled city area', async () => {
+  const rectangle = {
+    low: { latitude: 29.7, longitude: -95.4 },
+    high: { latitude: 29.8, longitude: -95.3 },
+  };
+  await searchGooglePlaces({ query: 'roofer', location: 'Houston, TX', maxResults: 20, rectangle }, {
+    client: {}, config: liveConfig,
+    reserveUsage: async () => ({ reserved: true }),
+    fetch: async (_url, options) => {
+      assert.deepEqual(JSON.parse(options.body), {
+        textQuery: 'roofer in Houston, TX', maxResultCount: 20,
+        locationRestriction: { rectangle },
+      });
+      assert.match(options.headers['X-Goog-FieldMask'], /places\.location/);
+      return { ok: true, json: async () => ({ places: [] }) };
+    },
+  });
+});
+
 test('honors a bounded number of Google results pages', async () => {
   let requests = 0;
   const places = await searchGooglePlacesBatch({

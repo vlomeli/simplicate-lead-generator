@@ -12,6 +12,7 @@ const fieldMask = [
   'places.rating',
   'places.userRatingCount',
   'places.primaryType',
+  'places.location',
 ].join(',');
 
 export class GooglePlacesConfigurationError extends Error {}
@@ -44,12 +45,12 @@ export async function searchGooglePlacesPage(searchRequest, options = {}) {
         'X-Goog-Api-Key': activeConfig.googlePlacesApiKey,
         'X-Goog-FieldMask': fieldMask,
       },
-      body: JSON.stringify(searchRequest.pageToken
-        ? { pageToken: searchRequest.pageToken }
-        : {
-          textQuery: `${searchRequest.query.trim()} ${searchRequest.searchNearby ? 'near' : 'in'} ${searchRequest.location.trim()}`,
-          maxResultCount: Math.min(searchRequest.maxResults, maxGooglePlacesTextSearchResults),
-        }),
+      body: JSON.stringify({
+        textQuery: `${searchRequest.query.trim()} ${searchRequest.searchNearby ? 'near' : 'in'} ${searchRequest.location.trim()}`,
+        maxResultCount: Math.min(searchRequest.maxResults, maxGooglePlacesTextSearchResults),
+        ...(searchRequest.rectangle ? { locationRestriction: { rectangle: searchRequest.rectangle } } : {}),
+        ...(searchRequest.pageToken ? { pageToken: searchRequest.pageToken } : {}),
+      }),
       signal: AbortSignal.timeout(10_000),
     });
   } catch (error) {

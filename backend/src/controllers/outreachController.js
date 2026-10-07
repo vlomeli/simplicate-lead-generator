@@ -1,8 +1,9 @@
 import { config } from '../config/env.js';
 import { createFullResultsCsv, createOutreachCsv } from '../services/outreachCsvService.js';
 import { maxOutreachBusinesses, startOutreachJob } from '../services/outreachJobService.js';
-import { getOutreachJob, listRecentOutreachJobs as listRecentJobs } from '../services/outreachRepository.js';
+import { getOutreachJob, getCoverageMarket, listCoverageMarkets, listCoverageTiles, listRecentOutreachJobs as listRecentJobs } from '../services/outreachRepository.js';
 import { createSupabaseClient } from '../services/supabaseClient.js';
+import { coverageKey } from '../services/coverageService.js';
 
 export async function createOutreachJob(request, response) {
   const validationError = validateOutreachRequest(request.body);
@@ -37,6 +38,49 @@ export async function listRecentOutreachJobs(request, response) {
   }
 }
 
+export async function readSearchCoverage(request, response) {
+  const query = request.query.query;
+  const location = request.query.location;
+  if (typeof query !== 'string' || typeof location !== 'string' || !query.trim() || !location.trim()
+      || query.length > 120 || location.length > 120) {
+    return response.status(400).json({ error: 'A business type and starting location are required.' });
+  }
+  try {
+    const client = createSupabaseClient();
+    const queryKey = coverageKey(query);
+    const locationKey = coverageKey(location);
+    const market = await getCoverageMarket(client, queryKey, locationKey);
+    if (!market) return response.status(200).json({ center: null, areas: [] });
+    const tiles = await listCoverageTiles(client, queryKey, locationKey);
+    return response.status(200).json({
+      center: { latitude: market.center_lat, longitude: market.center_lng },
+      areas: tiles.map(tile => ({
+        index: tile.tile_index, latitude: tile.center_lat, longitude: tile.center_lng,
+        returned: tile.raw_results, duplicates: tile.duplicates,
+        newBusinesses: tile.new_businesses, searchedAt: tile.searched_at,
+      })),
+    });
+  } catch {
+    return response.status(500).json({ error: 'Unable to read search coverage.' });
+  }
+}
+
+export async function listSearchedCities(_request, response) {
+  try {
+    const markets = await listCoverageMarkets(createSupabaseClient());
+    return response.status(200).json(markets.map(market => ({
+      query: market.query_key,
+      location: market.location_key,
+      latitude: market.center_lat,
+      longitude: market.center_lng,
+      areasReserved: market.next_tile,
+      firstSearchedAt: market.created_at,
+    })));
+  } catch {
+    return response.status(500).json({ error: 'Unable to list searched cities.' });
+  }
+}
+
 export async function downloadOutreachCsv(request, response) {
   const type = request.query.type === 'full' ? 'full' : request.query.type === 'outreach' ? 'outreach' : null;
   if (!type) return response.status(400).json({ error: 'type must be outreach or full.' });
@@ -61,6 +105,7 @@ export async function downloadOutreachCsv(request, response) {
 export function validateOutreachRequest(body) {
   if (typeof body?.query !== 'string' || body.query.trim() === '') return 'query must be a non-empty string.';
   if (typeof body?.location !== 'string' || body.location.trim() === '') return 'location must be a non-empty string.';
+  if (body.query.length > 120 || body.location.length > 120) return 'query and location must be at most 120 characters.';
   if (!Number.isInteger(body?.targetCount) || body.targetCount < 1 || body.targetCount > maxOutreachBusinesses) {
     return `targetCount must be a whole number between 1 and ${maxOutreachBusinesses}.`;
   }
