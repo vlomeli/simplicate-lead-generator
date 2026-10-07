@@ -57,6 +57,11 @@ Google can return up to 20 businesses per Text Search page. A 50-business
 list can use up to three Google requests. If nearby fill is enabled and needed,
 it can use another three.
 
+A target of 50 is not a promise that Google has 50 matches for the wording and
+location. The application follows extra Google result pages only when Google
+provides them. Nearby fill makes one additional search around the starting
+location; it is not an exhaustive city-by-city or statewide search.
+
 | Activity | Maximum Google Places requests |
 | --- | ---: |
 | One 50-business list, exact location only | 3 |

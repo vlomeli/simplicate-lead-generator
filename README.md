@@ -63,7 +63,7 @@ The dashboard shows whether Google is disabled and displays the current daily an
 
 ## Recommended development budget: three 50-business lists per day
 
-A Google Places Text Search page supplies at most 20 businesses. A request for 50 businesses can therefore use up to three Google requests. When **Include nearby areas if needed** is enabled, the application can use up to three more requests to fill the list from nearby areas.
+A Google Places Text Search page supplies at most 20 businesses. A request for 50 businesses can therefore use up to three Google requests. **Fifty is a target, not a guarantee:** Google can return fewer results when a query has limited matches or does not provide another results page. When **Include nearby areas if needed** is enabled, the application can use up to three more requests to fill the list from nearby areas.
 
 | Activity | Maximum Google Places requests |
 | --- | ---: |
@@ -82,7 +82,7 @@ GOOGLE_PLACES_REQUESTS_PER_MINUTE=5
 
 The daily and monthly limits are application safety stops, not a replacement for Google Cloud billing controls or quotas. Confirm the active Google pricing, quota, API-key restrictions, and billing alerts before allowing production traffic. A smaller limit is safer while testing.
 
-Duplicate prevention and a small city may yield fewer results than requested. Nearby fill is opt-in for each list and the full address already records the business's city.
+Duplicate prevention and a small city may yield fewer results than requested. A state can be entered as the location, but Google still returns relevance-ranked results rather than an exhaustive statewide directory. Nearby fill is opt-in and performs one additional search around the starting location; it does not automatically search every city in a state. The full address already records the business's city.
 
 ## Public website email discovery
 
