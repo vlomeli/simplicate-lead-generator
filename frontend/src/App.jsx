@@ -8,10 +8,8 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
   const [notice, setNotice] = useState('');
-  const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => (
-    window.location.hash.includes('type=recovery')
-    || new URLSearchParams(window.location.search).get('type') === 'recovery'
-  ));
+  const [passwordAction, setPasswordAction] = useState(() => getPasswordActionFromUrl());
+  const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -23,7 +21,8 @@ export default function App() {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
-      if (event === 'PASSWORD_RECOVERY') setIsPasswordRecovery(true);
+      if (event === 'PASSWORD_RECOVERY') setPasswordAction('recovery');
+      if (event === 'SIGNED_IN' && getPasswordActionFromUrl() === 'invite') setPasswordAction('invite');
     });
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -38,6 +37,7 @@ export default function App() {
       <header className="topbar">
         <a className="brand" href="/">Simplicate <span>Leads</span></a>
         <div className="topbar-actions">
+          <button className="help-button" onClick={() => setShowHelp(true)} aria-label="How Simplicate Leads works">?</button>
           <button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} aria-label="Toggle color theme">
             {theme === 'light' ? '◐ Dark' : '◑ Light'}
           </button>
@@ -45,15 +45,16 @@ export default function App() {
         </div>
       </header>
 
-      {!isSupabaseConfigured ? <SetupNotice /> : isPasswordRecovery && session
-        ? <SetPassword onComplete={() => { setIsPasswordRecovery(false); setNotice('Your password has been updated.'); }} />
-        : session ? <Dashboard session={session} setNotice={setNotice} /> : <AuthCard setNotice={setNotice} />}
+      {!isSupabaseConfigured ? <SetupNotice /> : passwordAction && session
+        ? <SetPassword action={passwordAction} onComplete={() => { clearAuthLinkFromUrl(); setPasswordAction(null); setNotice('Your password has been updated.'); }} />
+        : session ? <Dashboard session={session} /> : <AuthCard setNotice={setNotice} />}
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
       {notice && <div className="toast" role="status">{notice}</div>}
     </main>
   );
 }
 
-function SetPassword({ onComplete }) {
+function SetPassword({ action, onComplete }) {
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [busy, setBusy] = useState(false);
@@ -70,7 +71,23 @@ function SetPassword({ onComplete }) {
     onComplete();
   };
 
-  return <section className="auth-layout"><div className="intro"><p className="eyebrow">Account recovery</p><h1>Choose a new password.</h1><p>Your reset link has securely signed you in just long enough to set a new password.</p></div><form className="card auth-card" onSubmit={submit}><p className="eyebrow">One last step</p><h2>Set your password</h2><label>New password<input type="password" value={password} onChange={event => setPassword(event.target.value)} required minLength="8" autoComplete="new-password" /></label><label>Confirm password<input type="password" value={confirmation} onChange={event => setConfirmation(event.target.value)} required minLength="8" autoComplete="new-password" /></label>{error && <p className="form-error">{error}</p>}<button className="primary" disabled={busy}>{busy ? 'Saving…' : 'Save password'}</button></form></section>;
+  const isInvite = action === 'invite';
+  return <section className="auth-layout"><div className="intro"><p className="eyebrow">{isInvite ? 'You are invited' : 'Account recovery'}</p><h1>Choose a new password.</h1><p>{isInvite ? 'Set a password to finish joining Simplicate Leads.' : 'Your reset link has securely signed you in just long enough to set a new password.'}</p></div><form className="card auth-card" onSubmit={submit}><p className="eyebrow">One last step</p><h2>Set your password</h2><label>New password<input type="password" value={password} onChange={event => setPassword(event.target.value)} required minLength="8" autoComplete="new-password" /></label><label>Confirm password<input type="password" value={confirmation} onChange={event => setConfirmation(event.target.value)} required minLength="8" autoComplete="new-password" /></label>{error && <p className="form-error">{error}</p>}<button className="primary" disabled={busy}>{busy ? 'Saving…' : isInvite ? 'Set password and continue' : 'Save password'}</button></form></section>;
+}
+
+function getPasswordActionFromUrl() {
+  const search = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const type = search.get('type') || hash.get('type');
+  return type === 'invite' || type === 'recovery' ? type : null;
+}
+
+function clearAuthLinkFromUrl() {
+  window.history.replaceState({}, document.title, window.location.pathname);
+}
+
+function HelpModal({ onClose }) {
+  return <div className="confirmation-backdrop" role="presentation"><section className="help-modal card" role="dialog" aria-modal="true" aria-labelledby="help-title"><div className="help-heading"><div><p className="eyebrow">Quick guide</p><h2 id="help-title">How Simplicate Leads works</h2></div><button type="button" className="help-close" onClick={onClose} aria-label="Close help">×</button></div><ol className="help-steps"><li><strong>Sign in securely.</strong> Invited users choose a password from their email link. Existing users can use <em>Forgot password?</em> from the sign-in screen.</li><li><strong>Choose a business type and starting city.</strong> Set a target of up to 50 businesses, then review the confirmation before the search begins.</li><li><strong>Optionally expand the search.</strong> When regional fallback is enabled, the app searches the city first and then the matching US state only if the list is short. A list uses at most six Google Places requests.</li><li><strong>Check public websites.</strong> The app looks for visibly published email addresses on up to three likely pages per business. It does not guess addresses, bypass blocked sites, or render JavaScript-only pages.</li><li><strong>Export what you need.</strong> The full CSV includes every business checked. The outreach CSV includes only businesses with a public email. Lists remain available for seven days.</li></ol><p className="confirmation-note">Fixture mode makes no Google requests. In live mode, the usage card shows the application’s daily and monthly safety allowance.</p><div className="confirmation-actions"><button type="button" className="primary" onClick={onClose}>Got it</button></div></section></div>;
 }
 
 function SetupNotice() {
@@ -97,15 +114,15 @@ function AuthCard({ setNotice }) {
   return <section className="auth-layout"><div className="intro"><p className="eyebrow">Private lead discovery</p><h1>Find the next business worth helping.</h1><p>Review a focused batch of leads, export it, and keep every search deliberate.</p><div className="safety-note">Fixture mode is active. This dashboard does not call Google Places.</div></div><form className="card auth-card" onSubmit={submit}><p className="eyebrow">{mode === 'sign-in' ? 'Welcome back' : 'Password reset'}</p><h2>{mode === 'sign-in' ? 'Sign in' : 'Reset your password'}</h2><label>Email<input type="email" value={email} onChange={event => setEmail(event.target.value)} required autoComplete="email" /></label>{mode === 'sign-in' && <label>Password<input type="password" value={password} onChange={event => setPassword(event.target.value)} required autoComplete="current-password" /></label>}{error && <p className="form-error">{error}</p>}<button className="primary" disabled={busy}>{busy ? 'Please wait…' : mode === 'sign-in' ? 'Sign in' : 'Send reset email'}</button><button type="button" className="text-button" onClick={() => setMode(mode === 'sign-in' ? 'reset' : 'sign-in')}>{mode === 'sign-in' ? 'Forgot password?' : 'Back to sign in'}</button></form></section>;
 }
 
-function Dashboard({ session, setNotice }) {
+function Dashboard({ session }) {
   const [form, setForm] = useState({ query: 'auto repair', location: 'Modesto, CA', targetCount: 50, includeNearby: true });
   const [job, setJob] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [usage, setUsage] = useState(null);
   const [usageError, setUsageError] = useState('');
-  const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [recentJobs, setRecentJobs] = useState([]);
+  const [pendingSearch, setPendingSearch] = useState(null);
 
   const loadUsage = async () => {
     try {
@@ -153,12 +170,18 @@ function Dashboard({ session, setNotice }) {
     return () => window.clearInterval(interval);
   }, [job?.id, job?.status]);
 
-  const buildList = async event => {
-    event.preventDefault(); setBusy(true); setError('');
+  const requestSearchConfirmation = event => {
+    event.preventDefault();
+    setError('');
+    setPendingSearch({ ...form, targetCount: Number(form.targetCount) });
+  };
+
+  const buildList = async search => {
+    setBusy(true); setError('');
     try {
       const response = await fetch(`${apiUrl}/api/outreach/jobs`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ ...form, targetCount: Number(form.targetCount) }),
+        body: JSON.stringify(search),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'The outreach list could not be started.');
@@ -189,7 +212,26 @@ function Dashboard({ session, setNotice }) {
   };
 
   const fixtureMode = usage?.fixtureMode ?? true;
-  return <section className="dashboard"><div className="page-heading"><div><p className="eyebrow">Lead workspace</p><h1>Build an outreach list.</h1><p>Signed in as {session.user.email}</p></div><div className="heading-actions"><div className={`mode-pill ${fixtureMode ? '' : 'live'}`}><span /> {fixtureMode ? 'Fixture mode' : 'Live Google mode'}</div><button className="text-button" onClick={() => setShowPasswordForm(!showPasswordForm)}>Set password</button></div></div>{showPasswordForm && <AccountPassword onComplete={() => { setShowPasswordForm(false); setNotice('Your password has been updated.'); }} />}<UsageCard usage={usage} error={usageError} /><form className="search-card card" onSubmit={buildList}><label>Business type<input value={form.query} onChange={event => setForm({ ...form, query: event.target.value })} required /></label><label>Starting location<input value={form.location} onChange={event => setForm({ ...form, location: event.target.value })} required /></label><label>Target businesses<input type="number" min="1" max="50" value={form.targetCount} onChange={event => setForm({ ...form, targetCount: event.target.value })} required /><small className="field-hint">Up to 50. Google may return fewer results.</small></label><label className="nearby-option"><input type="checkbox" checked={form.includeNearby} onChange={event => setForm({ ...form, includeNearby: event.target.checked })} />Include nearby areas if needed</label><button className="primary" disabled={busy || ['queued', 'running'].includes(job?.status)}>{busy ? 'Starting…' : 'Build list'}</button></form>{error && <p className="form-error large-error">{error}</p>}{job && <OutreachJob job={job} onDownload={downloadCsv} />}<RecentOutreachJobs jobs={recentJobs} onOpen={jobToOpen => loadJob(jobToOpen.id).catch(openError => setError(openError.message))} /></section>;
+  return <section className="dashboard">
+    <div className="page-heading"><div><p className="eyebrow">Lead workspace</p><h1>Build an outreach list.</h1><p>Signed in as {session.user.email}</p></div><div className="heading-actions"><div className={`mode-pill ${fixtureMode ? '' : 'live'}`}><span /> {fixtureMode ? 'Fixture mode' : 'Live Google mode'}</div></div></div>
+    <UsageCard usage={usage} error={usageError} />
+    <form className="search-card card" onSubmit={requestSearchConfirmation}>
+      <label>Business type<input value={form.query} onChange={event => setForm({ ...form, query: event.target.value })} required /></label>
+      <label>Starting location<input value={form.location} onChange={event => setForm({ ...form, location: event.target.value })} required /></label>
+      <label className="target-field">Target businesses<input type="number" min="1" max="50" value={form.targetCount} onChange={event => setForm({ ...form, targetCount: event.target.value })} required /><small className="field-hint">Up to 50. Google may return fewer results.</small></label>
+      <label className="nearby-option"><input type="checkbox" checked={form.includeNearby} onChange={event => setForm({ ...form, includeNearby: event.target.checked })} />Expand to region</label>
+      <button className="primary" disabled={busy || ['queued', 'running'].includes(job?.status)}>{busy ? 'Starting…' : 'Build list'}</button>
+    </form>
+    {error && <p className="form-error large-error">{error}</p>}
+    {pendingSearch && <SearchConfirmation search={pendingSearch} fixtureMode={fixtureMode} onCancel={() => setPendingSearch(null)} onConfirm={() => { const search = pendingSearch; setPendingSearch(null); buildList(search); }} />}
+    {job && <OutreachJob job={job} onDownload={downloadCsv} />}
+    <RecentOutreachJobs jobs={recentJobs} onOpen={jobToOpen => loadJob(jobToOpen.id).catch(openError => setError(openError.message))} />
+  </section>;
+}
+
+function SearchConfirmation({ search, fixtureMode, onCancel, onConfirm }) {
+  const maximumRequests = search.includeNearby ? 6 : 3;
+  return <div className="confirmation-backdrop" role="presentation"><section className="confirmation card" role="dialog" aria-modal="true" aria-labelledby="confirm-search-title"><p className="eyebrow">Confirm search</p><h2 id="confirm-search-title">Start this list?</h2><dl><div><dt>Business type</dt><dd>{search.query}</dd></div><div><dt>Starting location</dt><dd>{search.location}</dd></div><div><dt>Target</dt><dd>{search.targetCount} businesses</dd></div>{search.includeNearby && <div><dt>Regional fallback</dt><dd>Search the surrounding state if needed</dd></div>}</dl><p className="confirmation-note">{fixtureMode ? 'Fixture mode is active. This search will not contact Google.' : `This search can use up to ${maximumRequests} Google Places requests.`}</p><div className="confirmation-actions"><button type="button" className="quiet-button" onClick={onCancel}>Cancel</button><button type="button" className="primary" onClick={onConfirm}>Confirm search</button></div></section></div>;
 }
 
 function RecentOutreachJobs({ jobs, onOpen }) {
@@ -210,7 +252,7 @@ function OutreachJob({ job, onDownload }) {
       ? 'Monthly Google Places limit reached. Try again next month.'
       : null;
   const nearbySummary = job.includeNearby && job.nearbyBusinessesFound > 0
-    ? `${job.primaryBusinessesFound} found in ${job.location}; ${job.nearbyBusinessesFound} added from nearby areas.`
+    ? `${job.primaryBusinessesFound} found in ${job.location}; ${job.nearbyBusinessesFound} added from the regional fallback.`
     : null;
 
   return <section className="outreach-job card">
@@ -243,14 +285,6 @@ function UsageCard({ usage, error }) {
 }
 
 function UsageStat({ label, value, limit }) { return <div className="usage-stat"><span>{label}</span><strong>{value} <small>/ {limit}</small></strong><em>{limit - value} remaining</em></div>; }
-
-function AccountPassword({ onComplete }) { return <section className="account-password card"><div><p className="eyebrow">Account</p><h2>Set or update password</h2></div><SetPasswordForm onComplete={onComplete} compact /></section>; }
-
-function SetPasswordForm({ onComplete, compact = false }) {
-  const [password, setPassword] = useState(''); const [confirmation, setConfirmation] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
-  const submit = async event => { event.preventDefault(); if (password.length < 8) return setError('Use at least 8 characters.'); if (password !== confirmation) return setError('The passwords do not match.'); setBusy(true); setError(''); const { error: updateError } = await supabase.auth.updateUser({ password }); setBusy(false); if (updateError) return setError(updateError.message); onComplete(); };
-  return <form className={compact ? 'password-form compact' : 'password-form'} onSubmit={submit}><label>New password<input type="password" value={password} onChange={event => setPassword(event.target.value)} required minLength="8" autoComplete="new-password" /></label><label>Confirm password<input type="password" value={confirmation} onChange={event => setConfirmation(event.target.value)} required minLength="8" autoComplete="new-password" /></label>{error && <p className="form-error">{error}</p>}<button className="primary" disabled={busy}>{busy ? 'Saving…' : 'Save password'}</button></form>;
-}
 
 function LeadResults({ result }) {
   const download = () => {

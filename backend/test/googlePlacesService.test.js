@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   GooglePlacesUsageLimitError,
   searchGooglePlaces,
+  searchGooglePlacesBatch,
 } from '../src/services/googlePlacesService.js';
 
 const liveConfig = {
@@ -62,4 +63,24 @@ test('uses a nearby text query when a job opts into nearby expansion', async () 
       return { ok: true, json: async () => ({ places: [] }) };
     },
   });
+});
+
+test('honors a bounded number of Google results pages', async () => {
+  let requests = 0;
+  const places = await searchGooglePlacesBatch({
+    query: 'roofing contractor', location: 'Arizona', maxResults: 50, maxPages: 2,
+  }, {
+    client: {}, config: liveConfig,
+    reserveUsage: async () => ({ reserved: true }),
+    fetch: async () => {
+      requests += 1;
+      return {
+        ok: true,
+        json: async () => ({ places: [{ id: `place-${requests}` }], nextPageToken: 'another-page' }),
+      };
+    },
+  });
+
+  assert.equal(requests, 2);
+  assert.deepEqual(places, [{ id: 'place-1' }, { id: 'place-2' }]);
 });

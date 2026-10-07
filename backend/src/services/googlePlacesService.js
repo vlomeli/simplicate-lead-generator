@@ -82,8 +82,10 @@ export async function searchGooglePlaces(searchRequest, options = {}) {
 
 export async function searchGooglePlacesBatch(searchRequest, options = {}) {
   const targetCount = Math.min(searchRequest.maxResults, 50);
+  const maxPages = Math.min(searchRequest.maxPages ?? Math.ceil(targetCount / maxGooglePlacesTextSearchResults), 3);
   const places = [];
   let pageToken = null;
+  let pagesFetched = 0;
 
   do {
     const page = await searchGooglePlacesPage({
@@ -93,7 +95,8 @@ export async function searchGooglePlacesBatch(searchRequest, options = {}) {
     }, options);
     places.push(...page.places);
     pageToken = page.nextPageToken;
-  } while (pageToken && places.length < targetCount);
+    pagesFetched += 1;
+  } while (pageToken && places.length < targetCount && pagesFetched < maxPages);
 
   return places.slice(0, targetCount);
 }

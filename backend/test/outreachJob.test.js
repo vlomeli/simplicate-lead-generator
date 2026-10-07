@@ -54,7 +54,7 @@ test('live outreach passes a business website URL to public-email discovery', as
   assert.equal(results[0].recipient_email, 'hello@business.test');
 });
 
-test('fills a short primary search with opted-in nearby results', async () => {
+test('fills a short city search with an opted-in state fallback', async () => {
   const requests = [];
   const updates = [];
   await executeOutreachJob({
@@ -64,7 +64,7 @@ test('fills a short primary search with opted-in nearby results', async () => {
     updateJob: async (_client, _id, values) => { updates.push(values); },
     searchPlaces: async request => {
       requests.push(request);
-      return request.searchNearby
+      return request.location === 'California'
         ? [
           { id: 'nearby-1', displayName: { text: 'Nearby One' } },
           { id: 'nearby-2', displayName: { text: 'Nearby Two' } },
@@ -77,10 +77,29 @@ test('fills a short primary search with opted-in nearby results', async () => {
   });
 
   assert.equal(requests.length, 2);
-  assert.equal(requests[1].searchNearby, true);
+  assert.equal(requests[0].maxPages, 3);
+  assert.equal(requests[1].location, 'California');
+  assert.equal(requests[1].maxPages, 3);
   assert.equal(updates.at(-1).businesses_found, 3);
   assert.equal(updates.at(-1).primary_businesses_found, 1);
   assert.equal(updates.at(-1).nearby_businesses_found, 2);
+});
+
+test('uses only one state fallback after a short city search', async () => {
+  const requests = [];
+  await executeOutreachJob({
+    id: 'job-nearby-cap', query: 'roofing contractor', location: 'Phoenix, AZ', target_count: 50, source: 'google_places', include_nearby: true,
+  }, {
+    client: {},
+    updateJob: async () => {},
+    searchPlaces: async request => { requests.push(request); return []; },
+    claimPlaceId: async () => true,
+    checkEmail: async () => ({ status: 'no_website' }),
+    addResult: async () => {},
+  });
+
+  assert.deepEqual(requests.map(request => request.location), ['Phoenix, AZ', 'Arizona']);
+  assert.deepEqual(requests.map(request => request.maxPages), [3, 3]);
 });
 
 test('checks no more than three business websites at a time', async () => {

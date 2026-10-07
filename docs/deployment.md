@@ -99,7 +99,8 @@ CORS_ORIGIN=http://localhost:5173,https://your-vercel-project-url
 2. Confirm the usage card says Google is disabled.
 3. Build a fixture list, open a recent list, and download both CSV files.
 4. Check that the browser has no CORS errors and that password recovery returns
-   to the hosted dashboard.
+   to the hosted dashboard. If inviting a beta user, confirm the invite email
+   opens the password-setup screen before the dashboard.
 
 Do not enable Google until this fixture-mode deployment works.
 
@@ -114,7 +115,7 @@ WEBSITE_EMAIL_DISCOVERY_ENABLED=true
 
 Redeploy or restart the backend, then confirm the signed-in dashboard says
 **Live Google mode**. The 18-request daily limit supports at most three
-50-business lists with nearby fill in one day.
+50-business lists with regional fallback in one day.
 
 Start with one small live list after deployment. Review the Google usage,
 website-check duration, CSV quality, and host logs before allowing all three

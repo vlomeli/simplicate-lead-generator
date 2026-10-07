@@ -63,13 +63,13 @@ The dashboard shows whether Google is disabled and displays the current daily an
 
 ## Recommended development budget: three 50-business lists per day
 
-A Google Places Text Search page supplies at most 20 businesses. A request for 50 businesses can therefore use up to three Google requests. **Fifty is a target, not a guarantee:** Google can return fewer results when a query has limited matches or does not provide another results page. When **Include nearby areas if needed** is enabled, the application can use up to three more requests to fill the list from nearby areas.
+A Google Places Text Search page supplies at most 20 businesses. A request for 50 businesses can therefore use up to three Google requests. **Fifty is a target, not a guarantee:** Google can return fewer results when a query has limited matches or does not provide another results page. When **Expand to the surrounding region if needed** is enabled, the application searches the entered city first, then makes a state-level fallback search if the list is short.
 
 | Activity | Maximum Google Places requests |
 | --- | ---: |
 | One 50-business list, exact location only | 3 |
-| One 50-business list, including nearby fill | 6 |
-| Three lists in one day, including nearby fill | 18 |
+| One 50-business list, including regional fallback | 6 |
+| Three lists in one day, including regional fallback | 18 |
 | Three such lists per day for 30 days | 540 |
 
 For that deliberate development plan, use:
@@ -82,7 +82,7 @@ GOOGLE_PLACES_REQUESTS_PER_MINUTE=5
 
 The daily and monthly limits are application safety stops, not a replacement for Google Cloud billing controls or quotas. Confirm the active Google pricing, quota, API-key restrictions, and billing alerts before allowing production traffic. A smaller limit is safer while testing.
 
-Duplicate prevention and a small city may yield fewer results than requested. A state can be entered as the location, but Google still returns relevance-ranked results rather than an exhaustive statewide directory. Nearby fill is opt-in and performs one additional search around the starting location; it does not automatically search every city in a state. The full address already records the business's city.
+Duplicate prevention and a small city may yield fewer results than requested. A state can be entered as the location, but Google still returns relevance-ranked results rather than an exhaustive statewide directory. Regional expansion is opt-in and supports US city-and-state locations such as `Phoenix, AZ` or `Phoenix, Arizona`; it searches the corresponding state only when the city result is short. The full address already records the business's city.
 
 ## Public website email discovery
 
