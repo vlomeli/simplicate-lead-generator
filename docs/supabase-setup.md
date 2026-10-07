@@ -44,6 +44,12 @@ inviting users to the hosted app.
 Use Supabase Auth for user creation, invites, password recovery, and password
 changes. The application database never stores passwords.
 
+Invite people through Supabase Auth's **Invite user** action. When an invited
+person opens the email link, the dashboard shows the password-setup screen
+before the lead workspace. After they set a password, they remain signed in.
+The regular sign-in screen keeps the separate **Forgot password?** recovery
+flow.
+
 ## 3. Apply the database migrations
 
 Open the Supabase SQL Editor. Run these files once, in filename order:

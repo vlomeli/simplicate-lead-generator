@@ -11,6 +11,7 @@ import {
 } from './outreachRepository.js';
 import { discoverPublicBusinessEmail } from './websiteEmailDiscoveryService.js';
 import { normalizeLead } from '../utils/leadNormalizer.js';
+import { getUsStateFallback } from '../utils/usStateFallback.js';
 
 export const maxOutreachBusinesses = 50;
 export const websiteCheckConcurrency = 3;
@@ -53,7 +54,12 @@ export async function executeOutreachJob(job, options = {}) {
 
   try {
     await updateJob(client, job.id, { status: 'running' });
-    const primaryPlaces = await searchPlaces({ query: job.query, location: job.location, maxResults: job.target_count });
+    const primaryPlaces = await searchPlaces({
+      query: job.query,
+      location: job.location,
+      maxResults: job.target_count,
+      maxPages: 3,
+    });
     let websitesChecked = 0;
     let emailsFound = 0;
     let savedCount = 0;
@@ -104,13 +110,16 @@ export async function executeOutreachJob(job, options = {}) {
 
     await processPlaces(primaryPlaces, 'primary');
     if (job.source === 'google_places' && job.include_nearby && savedCount < job.target_count) {
-      const nearbyPlaces = await searchPlaces({
-        query: job.query,
-        location: job.location,
-        maxResults: job.target_count - savedCount,
-        searchNearby: true,
-      });
-      await processPlaces(nearbyPlaces, 'nearby');
+      const regionalFallback = getUsStateFallback(job.location);
+      if (regionalFallback) {
+        const nearbyPlaces = await searchPlaces({
+          query: job.query,
+          location: regionalFallback,
+          maxResults: job.target_count - savedCount,
+          maxPages: 3,
+        });
+        await processPlaces(nearbyPlaces, 'nearby');
+      }
     }
 
     await updateJob(client, job.id, {

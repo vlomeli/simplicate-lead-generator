@@ -54,19 +54,21 @@ intended.
 ## 4. Development allowance for three 50-business lists per day
 
 Google can return up to 20 businesses per Text Search page. A 50-business
-list can use up to three Google requests. If nearby fill is enabled and needed,
-it can use another three.
+list can use up to three Google requests. If regional expansion is enabled and
+needed, the application searches the US state from the entered city-and-state
+location. The state fallback can use up to another three requests, so the list
+remains capped at six requests.
 
 A target of 50 is not a promise that Google has 50 matches for the wording and
 location. The application follows extra Google result pages only when Google
-provides them. Nearby fill makes one additional search around the starting
-location; it is not an exhaustive city-by-city or statewide search.
+provides them. Regional expansion is a single, relevance-ranked state search,
+not an exhaustive city-by-city or statewide directory.
 
 | Activity | Maximum Google Places requests |
 | --- | ---: |
 | One 50-business list, exact location only | 3 |
-| One 50-business list with nearby fill | 6 |
-| Three lists with nearby fill in one day | 18 |
+| One 50-business list with regional fallback | 6 |
+| Three lists with regional fallback in one day | 18 |
 | Thirty such days | 540 |
 
 If that is the intentional development plan, set:
