@@ -4,6 +4,28 @@ import { isSupabaseConfigured, supabase } from './supabase.js';
 
 const csvHeaders = ['place_id', 'business_name', 'address', 'phone', 'website', 'rating', 'review_count', 'category', 'recipient', 'email_status'];
 
+// Render's free backend may need time to wake. Retry dashboard reads only;
+// never retry a request that starts a list or contacts Google Places.
+async function readDashboardData(url, accessToken) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let response;
+    try {
+      response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    } catch (error) {
+      if (attempt === 2) throw error;
+      await new Promise(resolve => setTimeout(resolve, 2_000 * (attempt + 1)));
+      continue;
+    }
+    if (response.status >= 500 && attempt < 2) {
+      await new Promise(resolve => setTimeout(resolve, 2_000 * (attempt + 1)));
+      continue;
+    }
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Unable to load dashboard data.');
+    return data;
+  }
+}
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
@@ -121,49 +143,52 @@ function Dashboard({ session }) {
   const [busy, setBusy] = useState(false);
   const [usage, setUsage] = useState(null);
   const [usageError, setUsageError] = useState('');
+  const [usageLoading, setUsageLoading] = useState(true);
   const [recentJobs, setRecentJobs] = useState([]);
+  const [recentJobsError, setRecentJobsError] = useState('');
+  const [recentJobsLoading, setRecentJobsLoading] = useState(true);
   const [pendingSearch, setPendingSearch] = useState(null);
   const [coverage, setCoverage] = useState(null);
   const [coverageError, setCoverageError] = useState('');
   const [cityMarkets, setCityMarkets] = useState([]);
   const [citiesError, setCitiesError] = useState('');
+  const [citiesLoading, setCitiesLoading] = useState(true);
+
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
   const loadUsage = async () => {
+    setUsageLoading(true);
+    setUsageError('');
+    setUsage(null);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/leads/usage`, {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Unable to load usage.');
+      const data = await readDashboardData(`${apiUrl}/api/leads/usage`, session.access_token);
       setUsage(data);
-    } catch (usageRequestError) { setUsageError(usageRequestError.message); }
+    } catch (usageRequestError) {
+      setUsage(null);
+      setUsageError(usageRequestError.message);
+    } finally { setUsageLoading(false); }
   };
 
   useEffect(() => {
     loadUsage();
   }, [session.access_token]);
 
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-
   const loadCoverage = async (query, location) => {
     const params = new URLSearchParams({ query, location });
-    const response = await fetch(`${apiUrl}/api/outreach/coverage?${params}`, {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Unable to load search coverage.');
+    const data = await readDashboardData(`${apiUrl}/api/outreach/coverage?${params}`, session.access_token);
     setCoverage(data); setCoverageError('');
   };
 
+  const retryCoverage = () => loadCoverage(form.query, form.location)
+    .catch(requestError => setCoverageError(requestError.message));
+
   const loadSearchedCities = async () => {
+    setCitiesLoading(true);
     try {
-      const response = await fetch(`${apiUrl}/api/outreach/coverage/cities`, {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Unable to load searched cities.');
+      const data = await readDashboardData(`${apiUrl}/api/outreach/coverage/cities`, session.access_token);
       setCityMarkets(data); setCitiesError('');
     } catch (requestError) { setCitiesError(requestError.message); }
+    finally { setCitiesLoading(false); }
   };
 
   useEffect(() => { loadSearchedCities(); }, [session.access_token]);
@@ -175,11 +200,7 @@ function Dashboard({ session }) {
     const timeout = window.setTimeout(async () => {
       try {
         const params = new URLSearchParams({ query: form.query, location: form.location });
-        const response = await fetch(`${apiUrl}/api/outreach/coverage?${params}`, {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Unable to load search coverage.');
+        const data = await readDashboardData(`${apiUrl}/api/outreach/coverage?${params}`, session.access_token);
         if (!cancelled) { setCoverage(data); setCoverageError(''); }
       } catch (requestError) { if (!cancelled) setCoverageError(requestError.message); }
     }, 450);
@@ -187,12 +208,12 @@ function Dashboard({ session }) {
   }, [form.query, form.location, session.access_token]);
 
   const loadRecentJobs = async () => {
-    const response = await fetch(`${apiUrl}/api/outreach/jobs`, {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Unable to load recent outreach lists.');
-    setRecentJobs(data);
+    setRecentJobsLoading(true);
+    try {
+      const data = await readDashboardData(`${apiUrl}/api/outreach/jobs`, session.access_token);
+      setRecentJobs(data); setRecentJobsError('');
+    } catch (requestError) { setRecentJobsError(requestError.message); }
+    finally { setRecentJobsLoading(false); }
   };
 
   const loadJob = async jobId => {
@@ -207,9 +228,7 @@ function Dashboard({ session }) {
     ]);
   };
 
-  useEffect(() => {
-    loadRecentJobs().catch(recentJobsError => setError(recentJobsError.message));
-  }, [session.access_token]);
+  useEffect(() => { loadRecentJobs(); }, [session.access_token]);
 
   useEffect(() => {
     if (!job?.id || ['completed', 'failed', 'stopped'].includes(job.status)) return undefined;
@@ -219,6 +238,7 @@ function Dashboard({ session }) {
 
   const requestSearchConfirmation = event => {
     event.preventDefault();
+    if (!usage || usageLoading) return;
     setError('');
     setPendingSearch({ ...form, targetCount: Number(form.targetCount) });
   };
@@ -258,23 +278,27 @@ function Dashboard({ session }) {
     } catch (downloadError) { setError(downloadError.message); }
   };
 
-  const fixtureMode = usage?.fixtureMode ?? true;
+  const fixtureMode = usage?.fixtureMode;
+  const modeLabel = !usage ? (usageError ? 'Connection unavailable' : 'Connecting to backend…')
+    : fixtureMode ? 'Google disabled' : 'Live Google mode';
   return <section className="dashboard">
-    <div className="page-heading"><div><p className="eyebrow">Lead workspace</p><h1>Build an outreach list.</h1><p>Signed in as {session.user.email}</p></div><div className="heading-actions"><div className={`mode-pill ${fixtureMode ? '' : 'live'}`}><span /> {fixtureMode ? 'Fixture mode' : 'Live Google mode'}</div></div></div>
-    <UsageCard usage={usage} error={usageError} />
+    <div className="page-heading"><div><p className="eyebrow">Lead workspace</p><h1>Build an outreach list.</h1><p>Signed in as {session.user.email}</p></div><div className="heading-actions"><div className={`mode-pill ${usage && !fixtureMode ? 'live' : ''}`}><span /> {modeLabel}</div></div></div>
+    <UsageCard usage={usage} error={usageError} loading={usageLoading} onRetry={loadUsage} />
     <form className="search-card card" onSubmit={requestSearchConfirmation}>
       <label>Business type<input value={form.query} onChange={event => setForm({ ...form, query: event.target.value })} required /></label>
       <label>Starting location<input value={form.location} onChange={event => setForm({ ...form, location: event.target.value })} required /></label>
       <label className="target-field">Target businesses<input type="number" min="1" max="50" value={form.targetCount} onChange={event => setForm({ ...form, targetCount: event.target.value })} required /><small className="field-hint">Up to 50. Google may return fewer results.</small></label>
       <label className="nearby-option"><input type="checkbox" checked={form.includeNearby} onChange={event => setForm({ ...form, includeNearby: event.target.checked })} />Expand to region</label>
-      <button className="primary" disabled={busy || ['queued', 'running'].includes(job?.status)}>{busy ? 'Starting…' : 'Build list'}</button>
+      <button className="primary" disabled={!usage || usageLoading || busy || ['queued', 'running'].includes(job?.status)}>{busy ? 'Starting…' : 'Build list'}</button>
     </form>
-    <CityHistoryMap markets={cityMarkets} error={citiesError} onChoose={market =>
+    <CityHistoryMap markets={cityMarkets} error={citiesError} loading={citiesLoading} onRetry={loadSearchedCities} onChoose={market =>
       setForm(current => ({ ...current, query: market.query, location: formatCityName(market.location) }))} />
-    <CoverageMap coverage={coverage} error={coverageError} query={form.query} location={form.location} />
+    <CoverageMap coverage={coverage} error={coverageError} onRetry={retryCoverage} query={form.query} location={form.location} />
     {error && <p className="form-error large-error">{error}</p>}
-    {pendingSearch && <SearchConfirmation search={pendingSearch} fixtureMode={fixtureMode} onCancel={() => setPendingSearch(null)} onConfirm={() => { const search = pendingSearch; setPendingSearch(null); buildList(search); }} />}
+    {pendingSearch && usage && !usageLoading && <SearchConfirmation search={pendingSearch} fixtureMode={fixtureMode} onCancel={() => setPendingSearch(null)} onConfirm={() => { const search = pendingSearch; setPendingSearch(null); buildList(search); }} />}
     {job && <OutreachJob job={job} onDownload={downloadCsv} />}
+    {recentJobsLoading && <p className="dashboard-loading">Loading recent lists…</p>}
+    {recentJobsError && <p className="form-error large-error">Recent lists: {recentJobsError} <button type="button" className="quiet-button" onClick={loadRecentJobs}>Retry</button></p>}
     <RecentOutreachJobs jobs={recentJobs} onOpen={jobToOpen => {
       setForm(current => ({ ...current, query: jobToOpen.query, location: jobToOpen.location }));
       loadJob(jobToOpen.id).catch(openError => setError(openError.message));
@@ -330,11 +354,11 @@ function ProgressStat({ label, value, target }) { return <div className="usage-s
 
 function formatListDate(value) { return value ? new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Unknown date'; }
 
-function UsageCard({ usage, error }) {
-  if (error) return <p className="form-error large-error">Usage: {error}</p>;
-  if (!usage) return <div className="usage-card card"><p className="eyebrow">Usage protection</p><p>Loading usage…</p></div>;
+function UsageCard({ usage, error, loading, onRetry }) {
+  if (error) return <div className="usage-card card"><div><p className="eyebrow">Usage protection</p><h2>Connection unavailable</h2><p>Could not confirm Google mode or remaining allowance. {error}</p></div><button type="button" className="quiet-button" onClick={onRetry} disabled={loading}>Retry</button></div>;
+  if (!usage || loading) return <div className="usage-card card"><p className="eyebrow">Usage protection</p><p>Connecting to backend… This may take a moment after inactivity.</p></div>;
   const fixtureMode = usage.fixtureMode;
-  return <section className="usage-card card"><div><p className="eyebrow">Usage protection</p><h2>{fixtureMode ? 'Google is disabled' : 'Live Google Places is active'}</h2><p>{fixtureMode ? 'Fixture searches do not consume provider allowance.' : 'Each live search reserves one request before Google is contacted.'}</p></div><div className="usage-stats"><UsageStat label="Today" value={usage.daily.used} limit={usage.daily.limit} /><UsageStat label="This month" value={usage.monthly.used} limit={usage.monthly.limit} /></div></section>;
+  return <section className="usage-card card"><div><p className="eyebrow">Usage protection</p><h2>{fixtureMode ? 'Google is disabled' : 'Live Google Places is active'}</h2><p>{fixtureMode ? 'Fixture searches do not consume provider allowance.' : 'Each Google Places request reserves allowance before the call.'}</p></div><div className="usage-stats"><UsageStat label="Today" value={usage.daily.used} limit={usage.daily.limit} /><UsageStat label="This month" value={usage.monthly.used} limit={usage.monthly.limit} /></div></section>;
 }
 
 function UsageStat({ label, value, limit }) { return <div className="usage-stat"><span>{label}</span><strong>{value} <small>/ {limit}</small></strong><em>{limit - value} remaining</em></div>; }
@@ -362,7 +386,7 @@ function formatCityName(value) {
   }).join(', ');
 }
 
-function CityHistoryMap({ markets, error, onChoose }) {
+function CityHistoryMap({ markets, error, loading, onRetry, onChoose }) {
   const [selectedLocation, setSelectedLocation] = useState(null);
   const citiesByLocation = new Map();
   for (const market of markets) {
@@ -379,8 +403,9 @@ function CityHistoryMap({ markets, error, onChoose }) {
     return `${point.x},${point.y}`;
   }).join(' ');
   return <section className="city-history card" aria-label="Cities searched">
-    <div className="city-history-heading"><div><p className="eyebrow">Search history map</p><h2>Cities searched</h2><p>Red dots mark starting cities tracked for this workspace since coverage was enabled. Choose a city to view the business types searched there.</p></div><strong>{cities.length} {cities.length === 1 ? 'city' : 'cities'}</strong></div>
-    {error && <p className="form-error">{error}</p>}
+    <div className="city-history-heading"><div><p className="eyebrow">Search history map</p><h2>Cities searched</h2><p>Red dots mark starting cities tracked for this workspace since coverage was enabled. Choose a city to view the business types searched there.</p></div><strong>{loading ? 'Loading…' : `${cities.length} ${cities.length === 1 ? 'city' : 'cities'}`}</strong></div>
+    {loading && <p className="dashboard-loading">Loading searched cities…</p>}
+    {error && <p className="form-error">{error} <button type="button" className="quiet-button" onClick={onRetry} disabled={loading}>Retry</button></p>}
     <div className="city-history-body"><div className="city-map-plot" role="group" aria-label="Searched cities on a map of the contiguous United States">
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon points={outlinePoints} /></svg>
       {cities.filter(city => city.latitude >= 24 && city.latitude <= 50 && city.longitude >= -125 && city.longitude <= -66).map(city => {
@@ -389,12 +414,12 @@ function CityHistoryMap({ markets, error, onChoose }) {
           style={{ left: `${point.x}%`, top: `${point.y}%` }} onClick={() => setSelectedLocation(city.location)}
           aria-label={`${formatCityName(city.location)}: ${city.searches.length} business types`} />;
       })}
-      {!cities.length && <span className="city-map-empty">Live searches will appear here</span>}
+      {!cities.length && !loading && !error && <span className="city-map-empty">Live searches will appear here</span>}
     </div><div className="city-history-detail">
       {selected ? <><h3>{formatCityName(selected.location)}</h3><p>{selected.searches.length} {selected.searches.length === 1 ? 'business type' : 'business types'} tracked</p>
         <div className="city-searches">{selected.searches.map(market => <button type="button" key={market.query} onClick={() => onChoose(market)}>
           <strong>{market.query}</strong><span>View sampled areas</span>
-        </button>)}</div></> : <p>No cities tracked yet. Fixture lists and older searches without saved coordinates do not create dots.</p>}
+        </button>)}</div></> : !loading && !error ? <p>No cities tracked yet. Fixture lists and older searches without saved coordinates do not create dots.</p> : null}
       {cities.length > 1 && <div className="city-list" aria-label="All tracked cities">{cities.map(city =>
         <button type="button" key={city.location} className={selected?.location === city.location ? 'selected' : ''}
           onClick={() => setSelectedLocation(city.location)}>{formatCityName(city.location)}</button>)}</div>}
@@ -403,7 +428,7 @@ function CityHistoryMap({ markets, error, onChoose }) {
   </section>;
 }
 
-function CoverageMap({ coverage, error, query, location }) {
+function CoverageMap({ coverage, error, onRetry, query, location }) {
   const [selected, setSelected] = useState(null);
   const areas = coverage?.areas ?? [];
   const center = coverage?.center;
@@ -415,7 +440,7 @@ function CoverageMap({ coverage, error, query, location }) {
   return <section className="coverage-card card" aria-label="Search coverage">
     <div className="coverage-copy"><p className="eyebrow">Area samples for selected search</p><h2>{query || 'Business type'} near {location || 'starting city'}</h2><p>These dots show small areas sampled for this business type and starting city. Counts are across all lists for this search. The initial broad city lookup is not plotted; the latest list’s full total is shown below.</p>
       <div className="coverage-totals"><span>{areas.length} areas sampled</span><span>{totals.newBusinesses} saved from mapped areas</span><span>{totals.duplicates} already collected in mapped areas</span></div>
-      {error && <p className="form-error">{error}</p>}
+      {error && <p className="form-error">{error} <button type="button" className="quiet-button" onClick={onRetry}>Retry</button></p>}
       {displayed && <div className="coverage-detail"><strong>Area {displayed.index + 1}</strong><span>Sampled {formatListDate(displayed.searchedAt)}</span><span>{displayed.returned} Google candidates · {displayed.duplicates} already collected · {displayed.newBusinesses} saved</span></div>}
     </div>
     <div className="coverage-plot" role="group" aria-label="Sampled areas around the starting city">

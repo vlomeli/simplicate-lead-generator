@@ -81,6 +81,8 @@ In a dedicated Google Cloud project, attach billing, enable the Places API used 
 
 Set a Google Cloud billing budget with alerts at 50%, 80%, and 90% of the monthly amount you are willing to spend, and use the lowest practical Places quota. These are secondary safeguards to the backend's limits. For a controlled live email test, set both backend switches to `true` and restart the backend. You can enable Google while leaving website checks off if testing search coverage alone.
 
+The dashboard usage card shows **requests used / limit**, not requests available. The app's daily counter resets at midnight UTC: **5:00 PM in California during daylight saving time** and **4:00 PM during standard time**. The monthly counter resets on the first day of each month at midnight UTC. Opening the dashboard only reads these counters; it does not call Google Places.
+
 ### 4. Run and verify
 
 Use two terminals:
